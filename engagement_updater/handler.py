@@ -43,8 +43,8 @@ class ResultType:
 
     action: Action
     dry_run: bool = False
-    association: Association = None
-    engagement: Engagement = None
+    association: Association = None  # type: ignore
+    engagement: Engagement = None  # type: ignore
 
 
 async def handle_engagement_update(  # pylint: disable=too-many-return-statements
@@ -233,13 +233,11 @@ async def process_engagement(  # pylint: disable=too-many-arguments
 
 def find_current_association(
     employee_uuid: UUID,
-    current_org_unit: dict | None,
+    current_org_unit: dict,
 ) -> Any:
     """Find the first association (if any) in `current_org_unit` whose employee UUID
     matches the given `employee_uuid`.
     """
-    if current_org_unit is None:
-        return None
     return first_true(
         current_org_unit["associations"],
         pred=lambda assoc: UUID(one(assoc["employee"])["uuid"]) == employee_uuid,
@@ -248,23 +246,22 @@ def find_current_association(
 
 def find_related_unit(
     related_units: list[dict],
-    current_org_unit: dict | None,
+    current_org_unit: dict,
 ) -> Any:
     """Find the "other" org unit in `related_units`, e.g. the org unit which is *not*
     `current_org_unit`. E.g. if units A and B are related, and we pass unit A as the
     `current_org_unit`, this returns unit B.
     """
-    if current_org_unit is None:
-        return None
     other_unit = first_true(
         related_units,
         pred=lambda org_unit: org_unit["uuid"] != current_org_unit["uuid"],
     )
-    logger.debug(
-        "Found related unit",
-        this_unit=current_org_unit["uuid"],
-        other_unit=other_unit["uuid"],
-    )
+    if other_unit is not None:
+        logger.debug(
+            "Found related unit",
+            this_unit=current_org_unit["uuid"],
+            other_unit=other_unit["uuid"],
+        )
     return other_unit
 
 
@@ -273,14 +270,13 @@ def get_association_obj(employee_uuid: UUID, current_org_unit: dict) -> Associat
     which is used to indicate the original organisation unit of the engagement after it
     has been processed.
     """
-    fields = dict(
+    return Association.from_simplified_fields(
         person_uuid=employee_uuid,
         org_unit_uuid=UUID(current_org_unit["uuid"]),
         association_type_uuid=_get_association_type_uuid(),
         # TODO: should the from date be identical to the from date of the engagement?
         from_date=datetime.now().strftime("%Y-%m-%d"),
     )
-    return Association.from_simplified_fields(**fields)
 
 
 def get_engagement_obj(
@@ -289,7 +285,7 @@ def get_engagement_obj(
     """Build an edited `Engagement` object which updates the found engagement so it is
     related to `other_unit` rather than its original org unit.
     """
-    fields = dict(
+    return Engagement.from_simplified_fields(
         uuid=engagement_uuid,
         person_uuid=employee_uuid,
         org_unit_uuid=UUID(other_unit["uuid"]),
@@ -302,7 +298,6 @@ def get_engagement_obj(
         user_key=engagement["user_key"],
         from_date=engagement["validity"]["from"],
     )
-    return Engagement.from_simplified_fields(**fields)
 
 
 def _get_dry_run() -> bool:

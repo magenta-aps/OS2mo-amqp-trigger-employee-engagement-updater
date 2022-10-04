@@ -247,10 +247,10 @@ async def test_lifespan(
     amqp_system.start = AsyncMock()
     amqp_system.stop = AsyncMock()
 
-    mo_amqpsystem.return_value = amqp_system
+    mo_amqpsystem.return_value = amqp_system  # type: ignore
 
     router = MagicMock()
-    mo_router.return_value = router
+    mo_router.return_value = router  # type: ignore
 
     assert not amqp_system.mock_calls
 
