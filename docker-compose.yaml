@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: Magenta ApS
+# SPDX-License-Identifier: MPL-2.0
+
+version: "3.9"
+services:
+  engagement-updater:
+    build: .
+    command: ["uvicorn", "--factory", "app.main:create_app", "--host", "0.0.0.0", "--reload"]
+    environment:
+      AMQP__URL: "amqp://guest:guest@msg_broker:5672/"
+      AUTH_SERVER: "http://keycloak:8080/auth"
+      MO_URL: "http://mo"
+      CLIENT_ID: "dipex"
+      CLIENT_SECRET: "603f1c82-d012-4d04-9382-dbe659c533fb"
+      ASSOCIATION_TYPE: "ec534b86-3d9b-42d8-bff0-afc4f81719af"
+    networks:
+      - os2mo_default
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./engagement_updater:/opt/app/
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://amqp_trigger_orggatekeeper:8000/metrics"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+networks:
+  os2mo_default:
+    external: true
