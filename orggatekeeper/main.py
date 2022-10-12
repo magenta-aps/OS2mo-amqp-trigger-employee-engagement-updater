@@ -1,17 +1,14 @@
-# SPDX-FileCopyrightText: 2019-2020 Magenta ApS
-#
+# SPDX-FileCopyrightText: 2022 Magenta ApS
 # SPDX-License-Identifier: MPL-2.0
 """Event handling."""
 from asyncio import gather
 from asyncio import Semaphore
 from contextlib import asynccontextmanager
 from contextlib import AsyncExitStack
-from functools import partial
 from operator import itemgetter
 from typing import Any
 from typing import AsyncGenerator
 from typing import Awaitable
-from typing import Callable
 from typing import Tuple
 from typing import TypeVar
 from uuid import UUID
@@ -23,7 +20,6 @@ from fastapi import Query
 from fastapi import Response
 from gql import gql
 from more_itertools import one
-from prometheus_client import Counter
 from prometheus_client import Info
 from prometheus_fastapi_instrumentator import Instrumentator
 from raclients.graph.client import PersistentGraphQLClient
@@ -35,24 +31,20 @@ from ramqp.mo.models import ObjectType
 from ramqp.mo.models import PayloadType
 from ramqp.mo.models import RequestType
 from ramqp.mo.models import ServiceType
-from ramqp.utils import sleep_on_error
+from starlette.status import HTTP_202_ACCEPTED
 from starlette.status import HTTP_204_NO_CONTENT
 from starlette.status import HTTP_503_SERVICE_UNAVAILABLE
 
-from .calculate import update_line_management
 from .config import get_settings
 from .config import Settings
-from .mo import fetch_org_uuid
+from .handler import handle_engagement_update
+from .handler import ResultType
+
 
 logger = structlog.get_logger()
+
 T = TypeVar("T")
 
-
-update_counter = Counter(
-    "orggatekeeper_changes",
-    "Number of updates made",
-    ["updated"],
-)
 build_information = Info("build_information", "Build information")
 
 
@@ -118,37 +110,6 @@ async def healthcheck_model_client(model_client: ModelClient) -> bool:
     except Exception:  # pylint: disable=broad-except
         logger.exception("Exception occured during GraphQL healthcheck")
     return False
-
-
-@sleep_on_error()
-async def organisation_gatekeeper_callback(
-    seeded_update_line_management: Callable[[UUID], Awaitable[bool]],
-    mo_routing_key: MORoutingKey,
-    payload: PayloadType,
-    **_: Any,
-) -> None:
-    """Updates line management information.
-
-    Args:
-        gql_client: GraphQL client.
-        model_client: MO model client.
-        settings: Integration settings module.
-        mo_routing_key: The message routing key.
-        payload: The message payload.
-        _: Additional RAMQP kwargs required for forwards-compatibility.
-
-    Returns:
-        None
-    """
-    logger.debug(
-        "Message received",
-        service_type=mo_routing_key.service_type,
-        object_type=mo_routing_key.object_type,
-        request_type=mo_routing_key.request_type,
-        payload=payload,
-    )
-    changed = await seeded_update_line_management(payload.uuid)
-    update_counter.labels(updated=changed).inc()
 
 
 def construct_clients(
@@ -234,11 +195,12 @@ def create_app(  # pylint: disable=too-many-statements
 
     app = FastAPI()
 
-    logger.info("Starting metrics server")
     update_build_information(
         version=settings.commit_tag, build_hash=settings.commit_sha
     )
+
     if settings.expose_metrics:
+        logger.info("Starting metrics server")
         Instrumentator().instrument(app).expose(app)
 
     context = construct_context()
@@ -247,43 +209,42 @@ def create_app(  # pylint: disable=too-many-statements
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator:
         async with AsyncExitStack() as stack:
-            logger.info("Settings up clients")
+            logger.info("Setting up clients")
             gql_client, model_client = construct_clients(settings)
-
-            model_client = context["model_client"] = await stack.enter_async_context(
-                model_client
-            )
             gql_client = context["gql_client"] = await stack.enter_async_context(
                 gql_client
             )
-
-            # Get organisation UUID
-            org_uuid = await fetch_org_uuid(gql_client)
-
-            logger.info("Seeding line management function")
-            seeded_update_line_management = partial(
-                update_line_management, gql_client, model_client, settings, org_uuid
-            )
-            context["seeded_update_line_management"] = seeded_update_line_management
-
-            logger.info("Settings up AMQP system")
-            callback = partial(
-                organisation_gatekeeper_callback, seeded_update_line_management
+            model_client = context["model_client"] = await stack.enter_async_context(
+                model_client
             )
 
-            object_types = [
-                ObjectType.ASSOCIATION,
-                ObjectType.ENGAGEMENT,
-                ObjectType.ORG_UNIT,
-                ObjectType.IT,
-            ]
+            logger.info("Setting up AMQP system")
 
             router = MORouter()
             amqp_system = MOAMQPSystem(settings=settings.amqp, router=router)
-            for object_type in object_types:
-                router.register(
-                    ServiceType.ORG_UNIT, object_type, RequestType.WILDCARD
-                )(callback)
+
+            @router.register(
+                ServiceType.EMPLOYEE, ObjectType.ENGAGEMENT, RequestType.WILDCARD
+            )
+            async def on_amqp_message(
+                mo_routing_key: MORoutingKey,
+                payload: PayloadType,
+                **_: Any,
+            ) -> ResultType:
+                logger.debug(
+                    "Message received",
+                    service_type=mo_routing_key.service_type,
+                    object_type=mo_routing_key.object_type,
+                    request_type=mo_routing_key.request_type,
+                    payload=payload,
+                )
+                return await handle_engagement_update(
+                    gql_client,
+                    model_client,
+                    mo_routing_key,
+                    payload,
+                )
+
             context["amqp_system"] = amqp_system
 
             logger.info("Starting AMQP system")
@@ -297,9 +258,9 @@ def create_app(  # pylint: disable=too-many-statements
 
     @app.get("/")
     async def index() -> dict[str, str]:
-        return {"name": "orggatekeeper"}
+        return {"name": "engagement_updater"}
 
-    @app.post("/trigger/all", status_code=202)
+    @app.post("/trigger/all", status_code=HTTP_202_ACCEPTED)
     async def update_all_org_units(background_tasks: BackgroundTasks) -> dict[str, str]:
         """Call update_line_management on all org units."""
         gql_client = context["gql_client"]
@@ -312,9 +273,7 @@ def create_app(  # pylint: disable=too-many-statements
         background_tasks.add_task(gather_with_concurrency, 5, *org_unit_tasks)
         return {"status": "Background job triggered"}
 
-    @app.post(
-        "/trigger/{uuid}",
-    )
+    @app.post("/trigger/{uuid}")
     async def update_org_unit(
         uuid: UUID = Query(
             ..., description="UUID of the organisation unit to recalculate"

@@ -1,5 +1,4 @@
-# SPDX-FileCopyrightText: 2019-2020 Magenta ApS
-#
+# SPDX-FileCopyrightText: 2022 Magenta ApS
 # SPDX-License-Identifier: MPL-2.0
 # pylint: disable=too-few-public-methods,missing-class-docstring
 """Settings handling."""
@@ -32,10 +31,10 @@ class LogLevel(Enum):
 logger = structlog.get_logger()
 
 
-class OrgGatekeeperConnectionSettings(ConnectionSettings):
+class EmployeeEngagementUpdaterConnectionSettings(ConnectionSettings):
     """Organisation Gatekeeper-specific connection settings."""
 
-    queue_prefix = "os2mo-amqp-trigger-organisation-gatekeeper"
+    queue_prefix = "os2mo-amqp-trigger-employee-engagement-updater"
 
     # TODO: Ensure we don't crash MO when running somewhat concurrently
     prefetch_count = 1
@@ -48,8 +47,8 @@ class Settings(BaseSettings):
     * https://git.magenta.dk/rammearkitektur/ramqp/-/blob/master/ramqp/config.py
     """
 
-    amqp: OrgGatekeeperConnectionSettings = Field(
-        default_factory=OrgGatekeeperConnectionSettings
+    amqp: EmployeeEngagementUpdaterConnectionSettings = Field(
+        default_factory=EmployeeEngagementUpdaterConnectionSettings
     )
 
     commit_tag: str = Field("HEAD", description="Git commit tag.")
@@ -59,68 +58,15 @@ class Settings(BaseSettings):
         parse_obj_as(AnyHttpUrl, "http://mo-service:5000"),
         description="Base URL for OS2mo.",
     )
-    client_id: str = Field("orggatekeeper", description="Client ID for OIDC client.")
+    client_id: str = Field(
+        "engagement_updater", description="Client ID for OIDC client."
+    )
     client_secret: SecretStr = Field(..., description="Client Secret for OIDC client.")
     auth_server: AnyHttpUrl = Field(
         parse_obj_as(AnyHttpUrl, "http://keycloak-service:8080/auth"),
         description="Base URL for OIDC server (Keycloak).",
     )
     auth_realm: str = Field("mo", description="Realm to authenticate against")
-
-    enable_hide_logic = Field(True, description="Whether or not to enable hide logic.")
-    hidden: list[str] = Field(
-        [],
-        description="List of organisation-unit user-keys to hide (childrens included).",
-    )
-    hidden_uuid: UUID | None = Field(
-        None,
-        description=(
-            "UUID of the class within the org_unit_hierarchy facet that indicates"
-            " hidden."
-        ),
-    )
-    hidden_user_key: str = Field(
-        "hide",
-        description=(
-            "User-key of the class within the org_unit_hierarchy facet that indicates"
-            " hidden, only used if hidden_uuid is not set."
-        ),
-    )
-
-    line_management_uuid: UUID | None = Field(
-        None,
-        description=(
-            "UUID of the class within the org_unit_hierarchy facet that indicates line"
-            " management."
-        ),
-    )
-    line_management_user_key: str = Field(
-        "linjeorg",
-        description=(
-            "User-key of the class within the org_unit_hierarchy facet that indicates"
-            " line management, only used if line_management_uuid is not set."
-        ),
-    )
-    self_owned_uuid: UUID | None = Field(
-        None,
-        description=(
-            "UUID of the class within the org_unit_hierarchy facet that indicates self-"
-            " owned organisation"
-        ),
-    )
-    self_owned_user_key: str = Field(
-        "selvejet",
-        description=(
-            "User-key of the class within the org_unit_hierarchy facet that indicates"
-            " self-owned organisation units, only used if self_owned_uuid is not set."
-        ),
-    )
-    self_owned_it_system_check: str | None = Field(
-        description=(
-            "User_key of the it-system used to check whether to mark the unit as"
-            " self-owned."
-        )
-    )
 
     dry_run: bool = Field(
         False, description="Run in dry-run mode, only printing what would have changed."
@@ -132,11 +78,11 @@ class Settings(BaseSettings):
 
     graphql_timeout: int = 120
 
-    line_management_top_level_user_keys: list[str] = Field(
-        [],
+    association_type: UUID = Field(
         description=(
-            "List of user_keys of the top organisation units in line management."
-        ),
+            "UUID of association type to use for new associations created by this"
+            " program."
+        )
     )
 
     class Config:
