@@ -1,56 +1,30 @@
 # SPDX-FileCopyrightText: Magenta ApS
-#
 # SPDX-License-Identifier: MPL-2.0
 
 version: "3.9"
 services:
-  orggatekeeper:
+  engagement-updater:
     build: .
     command: ["uvicorn", "--factory", "app.main:create_app", "--host", "0.0.0.0", "--reload"]
     environment:
       AMQP__URL: "amqp://guest:guest@msg_broker:5672/"
-
       AUTH_SERVER: "http://keycloak:8080/auth"
-
       MO_URL: "http://mo"
       CLIENT_ID: "dipex"
       CLIENT_SECRET: "603f1c82-d012-4d04-9382-dbe659c533fb"
-      SELF_OWNED_IT_SYSTEM_CHECK: "SD_uuid"
-      LINE_MANAGEMENT_TOP_LEVEL_USER_KEYS: '["Kolding Kommune"]'
-      HIDDEN: '["Skole og Børn"]'
+      ASSOCIATION_TYPE: "ec534b86-3d9b-42d8-bff0-afc4f81719af"
     networks:
       - os2mo_default
     ports:
       - "8000:8000"
     volumes:
-      - ./orggatekeeper:/opt/app/
+      - ./engagement_updater:/opt/app/
     healthcheck:
       test: ["CMD", "curl", "-f", "http://amqp_trigger_orggatekeeper:8000/metrics"]
       interval: 15s
       timeout: 5s
       retries: 3
       start_period: 30s
-    depends_on:
-      init:
-        condition: service_completed_successfully
-
-  init:
-    image: magentaaps/os2mo-init:latest
-    environment:
-      AUTH_SERVER: "http://keycloak:8080/auth"
-
-      MO_URL: "http://mo"
-      CLIENT_SECRET: "603f1c82-d012-4d04-9382-dbe659c533fb"
-
-      LORA_URL: "http://mox"
-      LORA_CLIENT_SECRET: "a091ed82-6e82-4efc-a8f0-001e2b127853"
-    networks:
-      - os2mo_default
-    volumes:
-      - type: bind
-        source: ./init.config.yaml
-        target: /config/config.yml
-        read_only: true
 
 networks:
   os2mo_default:
