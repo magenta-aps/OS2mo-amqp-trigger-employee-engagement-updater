@@ -23,7 +23,6 @@ ra-utils = "^1.0.0"
 uvicorn = {extras = ["standard"], version = "^0.17.6"}
 prometheus-fastapi-instrumentator = "^5.8.1"
 fastapi = "^0.78.0"
-iso8601 = "^1.1.0"
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.1.2"
