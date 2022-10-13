@@ -32,7 +32,7 @@ logger = structlog.get_logger()
 
 
 class EmployeeEngagementUpdaterConnectionSettings(ConnectionSettings):
-    """Organisation Gatekeeper-specific connection settings."""
+    """Connection settings specific to `engagement_updater`"""
 
     queue_prefix = "os2mo-amqp-trigger-employee-engagement-updater"
 
@@ -41,7 +41,7 @@ class EmployeeEngagementUpdaterConnectionSettings(ConnectionSettings):
 
 
 class Settings(BaseSettings):
-    """Settings for organisation gatekeeper.
+    """Settings for `engagement_updater`.
 
     Note that AMQP related settings are taken directly by RAMQP:
     * https://git.magenta.dk/rammearkitektur/ramqp/-/blob/master/ramqp/config.py
