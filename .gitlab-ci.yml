@@ -14,10 +14,10 @@ variables:
   IMAGE_SHA: ${CI_REGISTRY_IMAGE}:${CI_COMMIT_SHA}
 
   RELEASE_REGISTRY: docker.io
-  RELEASE_REGISTRY_IMAGE: index.docker.io/magentaaps/os2mo-amqp-trigger-organisation-gatekeeper
+  RELEASE_REGISTRY_IMAGE: index.docker.io/magentaaps/os2mo-amqp-trigger-employee-engagement-updater
 
-  PYTEST_COV_MODULE: orggatekeeper
-  PYTEST_COV_FAIL_UNDER: 100
+  PYTEST_COV_MODULE: engagement_updater
+  PYTEST_COV_FAIL_UNDER: 95
 
   PRECOMMIT_USE_POETRY: "true"
 
@@ -70,26 +70,3 @@ Build:
   extends: .build-docker
   variables:
     BUILD_DOCKER_EXTRA_FLAGS: "--build-arg=COMMIT_SHA=${CI_COMMIT_SHA} --build-arg=COMMIT_TAG=${CI_COMMIT_TAG}"
-
-# Deploy
-#########
-# Flux
-Deploy to Flux Dev:
-  extends: .release-to-dev
-  needs:
-    - Release version
-  variables:
-    ENDPOINT: os2mo/flux/orggatekeeper/update-dev
-
-Deploy to Flux Test:
-  extends: .release-to-test
-  needs: []
-  variables:
-    ENDPOINT: os2mo/flux/orggatekeeper/update-test
-
-Deploy to Flux Prod:
-  extends: .release-to-prod
-  needs: []
-  variables:
-    ENDPOINT: os2mo/flux/orggatekeeper/update-prod
-
