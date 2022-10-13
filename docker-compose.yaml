@@ -20,7 +20,7 @@ services:
     volumes:
       - ./engagement_updater:/opt/app/
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://amqp_trigger_orggatekeeper:8000/metrics"]
+      test: ["CMD", "curl", "-f", "http://engagement_updater:8000/metrics"]
       interval: 15s
       timeout: 5s
       retries: 3
