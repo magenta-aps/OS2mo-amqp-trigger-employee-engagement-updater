@@ -43,8 +43,8 @@ class ResultType:
 
     action: Action
     dry_run: bool = False
-    association: Association = None  # type: ignore
-    engagement: Engagement = None  # type: ignore
+    association: Association | None = None
+    engagement: Engagement | None = None
 
 
 async def handle_engagement_update(  # pylint: disable=too-many-return-statements
