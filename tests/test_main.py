@@ -187,8 +187,6 @@ async def test_metrics_endpoint(test_client_builder: Callable[..., TestClient]) 
     )
     response = test_client.get("/metrics")
     assert response.status_code == 200
-    # assert "# TYPE orggatekeeper_changes_created gauge" in response.text
-    # assert "# TYPE build_information_info gauge" in response.text
 
 
 @patch("engagement_updater.main.construct_context")
