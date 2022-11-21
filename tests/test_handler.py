@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import pytest
+from ramodels.mo import Validity
 from ramodels.mo.details import Association
 from ramodels.mo.details import Engagement
 from ramqp.mo.models import MORoutingKey
@@ -48,13 +49,23 @@ async def _invoke(
         uuid=_employee_uuid, object_uuid=engagement_uuid, time=datetime.now()
     )
 
-    # Call function under test
+    # Call the function under test
     return await handle_engagement_update(
         gql_client,
         model_client,
         MORoutingKey.from_routing_key(routing_key),
         payload,
     )
+
+
+def _non_nullable_fields() -> dict[str, str | uuid.UUID | Validity]:
+    return {
+        "job_function_uuid": str(uuid.uuid4()),
+        "engagement_type_uuid": str(uuid.uuid4()),
+        "primary_uuid": str(uuid.uuid4()),
+        "user_key": "",
+        "validity": Validity(from_date=datetime.now().date()),
+    }
 
 
 async def test_handle_engagement_update_bails_on_terminate_request() -> None:
@@ -141,6 +152,7 @@ async def test_handle_engagement_update_bails_on_reverse_association() -> None:
                                 ],
                             }
                         ],
+                        **_non_nullable_fields(),
                     }
                 ],
             }
@@ -183,6 +195,7 @@ async def test_handle_engagement_update_skips_already_processed_engagement() -> 
                                 ],
                             }
                         ],
+                        **_non_nullable_fields(),
                     }
                 ],
             }

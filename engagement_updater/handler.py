@@ -75,11 +75,11 @@ class _Engagement(BaseModel):
     org_units: list[_OrgUnitWithRelatedUnits] = Field(
         alias="org_unit", min_items=1, max_items=1
     )
-    job_function_uuid: UUID | None
-    engagement_type_uuid: UUID | None
-    primary_uuid: UUID | None
-    user_key: str | None
-    validity: Validity | None
+    job_function_uuid: UUID
+    engagement_type_uuid: UUID
+    primary_uuid: UUID
+    user_key: str
+    validity: Validity
 
 
 class _EngagementList(BaseModel):
