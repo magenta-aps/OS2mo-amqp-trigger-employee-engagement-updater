@@ -181,7 +181,7 @@ async def handle_engagement_update(  # pylint: disable=too-many-return-statement
     current_association: _Association = find_current_association(
         employee_uuid, current_org_unit
     )
-    if current_association is None:  # pylint: disable=no-else-return
+    if current_association is None:
         # Perform the actual changes against the MO API (or log what would happen, in
         # case of a dry-run.)
         return await process_engagement(
@@ -192,13 +192,15 @@ async def handle_engagement_update(  # pylint: disable=too-many-return-statement
             current_org_unit,
             other_unit,
         )
-    else:
-        logger.info(
-            "Already processed this engagement, doing nothing",
-            current_association=current_association,
-            engagement_uuid=engagement_uuid,
-        )
-        return ResultType(action=ResultType.Action.SKIP_ALREADY_PROCESSED)
+
+    # A current association was found, indicating that we already processed this
+    # engagement.
+    logger.info(
+        "Already processed this engagement, doing nothing",
+        current_association=current_association,
+        engagement_uuid=engagement_uuid,
+    )
+    return ResultType(action=ResultType.Action.SKIP_ALREADY_PROCESSED)
 
 
 async def process_engagement(  # pylint: disable=too-many-arguments
