@@ -59,13 +59,19 @@ async def _invoke(
     )
 
     # Call the function under test
-    return await handle_engagement_update(
+    result: ResultType = await handle_engagement_update(
         gql_client,
         model_client,
         MORoutingKey.from_routing_key(routing_key),
         payload,
         settings,
     )
+
+    # Assert no MO upload API call is made during dry runs
+    if settings.dry_run:
+        model_client.upload.assert_not_awaited()
+
+    return result
 
 
 def _non_nullable_fields() -> dict[str, str | uuid.UUID | Validity]:
