@@ -2,9 +2,9 @@
 # SPDX-License-Identifier: MPL-2.0
 "Test `engagement_updater.handler`"
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 from unittest.mock import AsyncMock
-from unittest.mock import patch
 
 import pytest
 from ramodels.mo import Validity
@@ -17,12 +17,20 @@ from engagement_updater.handler import handle_engagement_update
 from engagement_updater.handler import ResultType
 
 
+@dataclass
+class FakeSettings:
+    dry_run: bool
+    association_type: uuid.UUID
+
+
 _employee_uuid = uuid.uuid4()
+_default_fake_settings = FakeSettings(dry_run=True, association_type=uuid.uuid4())
 
 
 async def _invoke(
     gql_response: dict = None,
     routing_key: str = "employee.engagement.create",
+    settings: FakeSettings = _default_fake_settings,
 ) -> ResultType:
     """Invoke `handle_engagement_update` using mocked GraphQL and model clients.
 
@@ -55,6 +63,7 @@ async def _invoke(
         model_client,
         MORoutingKey.from_routing_key(routing_key),
         payload,
+        settings,
     )
 
 
@@ -254,13 +263,9 @@ async def test_handle_engagement_update_processes_engagement(dry_run: bool) -> N
             }
         ],
     }
-    with patch("engagement_updater.handler._get_dry_run", return_value=dry_run):
-        with patch(
-            "engagement_updater.handler._get_association_type_uuid",
-            return_value=uuid.uuid4(),
-        ):
-            result = await _invoke(gql_response=gql_response)
-            assert result.action == ResultType.Action.SUCCESS_PROCESSED_ENGAGEMENT
-            assert result.dry_run == dry_run
-            assert isinstance(result.engagement, Engagement)
-            assert isinstance(result.association, Association)
+    settings = FakeSettings(dry_run=dry_run, association_type=uuid.uuid4())
+    result = await _invoke(gql_response=gql_response, settings=settings)
+    assert result.action == ResultType.Action.SUCCESS_PROCESSED_ENGAGEMENT
+    assert result.dry_run == dry_run
+    assert isinstance(result.engagement, Engagement)
+    assert isinstance(result.association, Association)

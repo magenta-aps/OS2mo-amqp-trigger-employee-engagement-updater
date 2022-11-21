@@ -243,6 +243,7 @@ def create_app(  # pylint: disable=too-many-statements
                     model_client,
                     mo_routing_key,
                     payload,
+                    settings,
                 )
 
             context["amqp_system"] = amqp_system

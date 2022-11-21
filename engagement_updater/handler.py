@@ -25,7 +25,7 @@ from ramqp.mo.models import MORoutingKey
 from ramqp.mo.models import PayloadType
 from ramqp.mo.models import RequestType
 
-from .config import get_settings
+from .config import Settings
 
 
 logger = structlog.get_logger()
@@ -98,6 +98,7 @@ async def handle_engagement_update(
     model_client: ModelClient,
     mo_routing_key: MORoutingKey,
     payload: PayloadType,
+    settings: Settings,
 ) -> ResultType:
     """Perform the central business logic of the program."""
 
@@ -196,6 +197,7 @@ async def handle_engagement_update(
             current_engagement=current_engagement,
             current_org_unit=current_org_unit,
             other_unit=other_unit,
+            settings=settings,
         )
 
     # A current association was found, indicating that we already processed this
@@ -215,15 +217,17 @@ async def process_engagement(  # pylint: disable=too-many-arguments
     current_engagement: _Engagement,
     current_org_unit: _OrgUnitWithRelatedUnits,
     other_unit: _OrgUnit,
+    settings: Settings,
 ) -> ResultType:
     """Edit the engagement and create the association. In case `dry_run` is True, only
     build the MO API payloads, but do not POST them to the API.
     """
-    dry_run = _get_dry_run()
 
     # Create association in "current" org unit
-    association: Association = get_association_obj(employee_uuid, current_org_unit)
-    if dry_run:
+    association: Association = get_association_obj(
+        employee_uuid, current_org_unit, settings.association_type
+    )
+    if settings.dry_run:
         logger.info(
             "Would create association",
             association=association,
@@ -244,7 +248,7 @@ async def process_engagement(  # pylint: disable=too-many-arguments
         current_engagement,
         other_unit,
     )
-    if dry_run:
+    if settings.dry_run:
         logger.info(
             "Would update engagement",
             engagement_uuid=engagement_uuid,
@@ -262,7 +266,7 @@ async def process_engagement(  # pylint: disable=too-many-arguments
         action=ResultType.Action.SUCCESS_PROCESSED_ENGAGEMENT,
         engagement=engagement,
         association=association,
-        dry_run=dry_run,
+        dry_run=settings.dry_run,
     )
 
 
@@ -302,7 +306,9 @@ def find_related_unit(
 
 
 def get_association_obj(
-    employee_uuid: UUID, current_org_unit: _OrgUnitWithRelatedUnits
+    employee_uuid: UUID,
+    current_org_unit: _OrgUnitWithRelatedUnits,
+    association_type_uuid: UUID,
 ) -> Association:
     """Build a new `Association` object based on `employee_uuid` and `current_org_unit`
     which is used to indicate the original organisation unit of the engagement after it
@@ -311,7 +317,7 @@ def get_association_obj(
     return Association.from_simplified_fields(
         person_uuid=employee_uuid,
         org_unit_uuid=current_org_unit.uuid,
-        association_type_uuid=_get_association_type_uuid(),
+        association_type_uuid=association_type_uuid,
         # TODO: should the from date be identical to the from date of the engagement?
         from_date=datetime.now().strftime("%Y-%m-%d"),
     )
@@ -347,13 +353,3 @@ def _get_association_list(
     """
     associations: list[_Association] = org_unit.associations or []
     return associations
-
-
-def _get_dry_run() -> bool:
-    # This is a separate function to allow it to be mocked in tests.
-    return get_settings().dry_run
-
-
-def _get_association_type_uuid() -> UUID:
-    # This is a separate function to allow it to be mocked in tests.
-    return get_settings().association_type
