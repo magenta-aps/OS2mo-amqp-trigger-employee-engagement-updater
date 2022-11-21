@@ -29,7 +29,7 @@ def _mock_settings(dry_run: bool = False) -> Settings:
 
 
 async def _invoke(
-    gql_response: dict = None,
+    gql_response: dict | None = None,
     routing_key: str = "employee.engagement.create",
     settings: Settings = _mock_settings(dry_run=True),
 ) -> ResultType:
