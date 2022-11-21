@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MPL-2.0
 # pylint: disable=too-few-public-methods,missing-class-docstring
 """The business logic of the AMQP trigger."""
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime
 from enum import auto
@@ -186,12 +188,12 @@ async def handle_engagement_update(
         # Perform the actual changes against the MO API (or log what would happen, in
         # case of a dry-run.)
         return await process_engagement(
-            model_client,
-            employee_uuid,
-            engagement_uuid,
-            current_engagement,
-            current_org_unit,
-            other_unit,
+            model_client=model_client,
+            employee_uuid=employee_uuid,
+            engagement_uuid=engagement_uuid,
+            current_engagement=current_engagement,
+            current_org_unit=current_org_unit,
+            other_unit=other_unit,
         )
 
     # A current association was found, indicating that we already processed this
