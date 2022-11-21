@@ -67,7 +67,7 @@ async def test_handle_engagement_update_bails_on_no_engagements() -> None:
     """Test that we bail correctly if GraphQL query result does not contain any
     engagements."""
     result = await _invoke(gql_response={"engagements": [{"objects": []}]})
-    assert result.action == ResultType.Action.BAIL_NO_ENGAGEMENTS
+    assert result.action == ResultType.Action.BAIL_VALIDATION_ERROR
 
 
 async def test_handle_engagement_update_bails_on_no_org_unit_for_engagement() -> None:
@@ -85,7 +85,7 @@ async def test_handle_engagement_update_bails_on_no_org_unit_for_engagement() ->
         ],
     }
     result = await _invoke(gql_response=gql_response)
-    assert result.action == ResultType.Action.BAIL_NO_ORG_UNIT_FOR_ENGAGEMENT
+    assert result.action == ResultType.Action.BAIL_VALIDATION_ERROR
 
 
 async def test_handle_engagement_update_bails_on_no_related_org_units() -> None:
@@ -104,7 +104,7 @@ async def test_handle_engagement_update_bails_on_no_related_org_units() -> None:
         ],
     }
     result = await _invoke(gql_response=gql_response)
-    assert result.action == ResultType.Action.BAIL_NO_RELATED_ORG_UNITS
+    assert result.action == ResultType.Action.BAIL_VALIDATION_ERROR
 
 
 async def test_handle_engagement_update_bails_on_reverse_association() -> None:
