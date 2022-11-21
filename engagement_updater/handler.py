@@ -296,8 +296,7 @@ def find_related_unit(
 
 
 def get_association_obj(
-    employee_uuid: UUID,
-    current_org_unit: _OrgUnitWithRelatedUnits
+    employee_uuid: UUID, current_org_unit: _OrgUnitWithRelatedUnits
 ) -> Association:
     """Build a new `Association` object based on `employee_uuid` and `current_org_unit`
     which is used to indicate the original organisation unit of the engagement after it
