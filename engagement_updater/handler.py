@@ -93,7 +93,7 @@ class _Result(BaseModel):
     engagements: list[_EngagementList] = Field(min_items=1, max_items=1)
 
 
-async def handle_engagement_update(
+async def handle_engagement_update(  # pylint: disable=too-many-locals
     gql_client: PersistentGraphQLClient,
     model_client: ModelClient,
     mo_routing_key: MORoutingKey,
@@ -170,9 +170,9 @@ async def handle_engagement_update(
         return ResultType(action=ResultType.Action.BAIL_NO_RELATED_ORG_UNITS)
 
     # See if we are in the "second event", and `related_units` already have associations
-    associations: list[_Association] = _get_association_list(other_unit)
+    reverse_associations: list[_Association] = _get_association_list(other_unit)
     reverse_association: _Association | None = find_current_association(
-        employee_uuid, associations
+        employee_uuid, reverse_associations
     )
     if reverse_association:
         logger.info(
@@ -183,9 +183,9 @@ async def handle_engagement_update(
 
     # Check if the current unit already has an association for this employee,
     # indicating that we have already moved the engagement to the "other" unit.
-    associations: list[_Association] = _get_association_list(current_org_unit)
+    current_associations: list[_Association] = _get_association_list(current_org_unit)
     current_association: _Association | None = find_current_association(
-        employee_uuid, associations
+        employee_uuid, current_associations
     )
     if current_association is None:
         # Perform the actual changes against the MO API (or log what would happen, in
@@ -346,7 +346,7 @@ def get_engagement_obj(
 
 
 def _get_association_list(
-    org_unit: _OrgUnit | _OrgUnitWithRelatedUnits
+    org_unit: _OrgUnit | _OrgUnitWithRelatedUnits,
 ) -> list[_Association]:
     """Return either a list of associations, or an empty list, in case
     `org_unit.associations` is None.
