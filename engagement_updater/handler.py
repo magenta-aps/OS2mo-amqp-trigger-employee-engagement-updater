@@ -169,8 +169,9 @@ async def handle_engagement_update(
         return ResultType(action=ResultType.Action.BAIL_NO_RELATED_ORG_UNITS)
 
     # See if we are in the "second event", and `related_units` already have associations
+    associations: list[_Association] = _get_association_list(other_unit)
     reverse_association: _Association | None = find_current_association(
-        employee_uuid, other_unit
+        employee_uuid, associations
     )
     if reverse_association:
         logger.info(
@@ -181,8 +182,9 @@ async def handle_engagement_update(
 
     # Check if the current unit already has an association for this employee,
     # indicating that we have already moved the engagement to the "other" unit.
+    associations: list[_Association] = _get_association_list(current_org_unit)
     current_association: _Association | None = find_current_association(
-        employee_uuid, current_org_unit
+        employee_uuid, associations
     )
     if current_association is None:
         # Perform the actual changes against the MO API (or log what would happen, in
@@ -266,12 +268,11 @@ async def process_engagement(  # pylint: disable=too-many-arguments
 
 def find_current_association(
     employee_uuid: UUID,
-    current_org_unit: _OrgUnit | _OrgUnitWithRelatedUnits,
+    associations: list[_Association],
 ) -> _Association | None:
-    """Find the first association (if any) in `current_org_unit` whose employee UUID
-    matches the given `employee_uuid`.
+    """Find the first association (if any) whose employee UUID matches the given
+    `employee_uuid`.
     """
-    associations: list[_Association] = current_org_unit.associations or []
     association: _Association | None = first_true(
         associations,
         pred=lambda assoc: assoc.employee[0].uuid == employee_uuid,
@@ -336,6 +337,16 @@ def get_engagement_obj(
         user_key=engagement.user_key,
         from_date=engagement.validity.from_date.strftime("%Y-%m-%d"),
     )
+
+
+def _get_association_list(
+    org_unit: _OrgUnit | _OrgUnitWithRelatedUnits
+) -> list[_Association]:
+    """Return either a list of associations, or an empty list, in case
+    `org_unit.associations` is None.
+    """
+    associations: list[_Association] = org_unit.associations or []
+    return associations
 
 
 def _get_dry_run() -> bool:
