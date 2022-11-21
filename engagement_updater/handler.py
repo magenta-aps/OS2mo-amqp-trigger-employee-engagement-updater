@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2022 Magenta ApS
 # SPDX-License-Identifier: MPL-2.0
+# pylint: disable=too-few-public-methods,missing-class-docstring
 """The business logic of the AMQP trigger."""
 from dataclasses import dataclass
 from datetime import datetime
