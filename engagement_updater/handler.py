@@ -90,7 +90,7 @@ class _Result(BaseModel):
     engagements: list[_EngagementList] = Field(min_items=1, max_items=1)
 
 
-async def handle_engagement_update(  # pylint: disable=too-many-return-statements
+async def handle_engagement_update(
     gql_client: PersistentGraphQLClient,
     model_client: ModelClient,
     mo_routing_key: MORoutingKey,
