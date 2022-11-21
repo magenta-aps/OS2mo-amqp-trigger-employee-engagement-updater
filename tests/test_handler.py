@@ -6,7 +6,6 @@ from datetime import datetime
 from unittest.mock import AsyncMock
 
 import pytest
-from ramodels.mo import Validity
 from ramodels.mo.details import Association
 from ramodels.mo.details import Engagement
 from ramqp.mo.models import MORoutingKey
@@ -74,13 +73,16 @@ async def _invoke(
     return result
 
 
-def _non_nullable_fields() -> dict[str, str | uuid.UUID | Validity]:
+def _non_nullable_engagement_fields() -> dict[str, str | dict]:
     return {
         "job_function_uuid": str(uuid.uuid4()),
         "engagement_type_uuid": str(uuid.uuid4()),
         "primary_uuid": str(uuid.uuid4()),
-        "user_key": "",
-        "validity": Validity(from_date=datetime.now().date()),
+        "user_key": "user_key",
+        "validity": {
+            "from": "2022-12-31",
+            "to": None,
+        },
     }
 
 
@@ -100,17 +102,8 @@ async def test_handle_engagement_update_bails_on_no_engagements() -> None:
 async def test_handle_engagement_update_bails_on_no_org_unit_for_engagement() -> None:
     """Test that we bail correctly if GraphQL query result does not contain any
     organisation units for the found engagement."""
-    gql_response: dict = {
-        "engagements": [
-            {
-                "objects": [
-                    {
-                        "org_unit": [],
-                    }
-                ],
-            }
-        ],
-    }
+    engagements: dict = {"org_unit": []}
+    gql_response: dict = {"engagements": [{"objects": [engagements]}]}
     result = await _invoke(gql_response=gql_response)
     assert result.action == ResultType.Action.BAIL_VALIDATION_ERROR
 
@@ -119,17 +112,9 @@ async def test_handle_engagement_update_bails_on_no_related_org_units() -> None:
     """Test that we bail correctly if GraphQL query result does not contain any related
     organisation units.
     """
-    gql_response: dict = {
-        "engagements": [
-            {
-                "objects": [
-                    {
-                        "org_unit": [{"related_units": []}],
-                    }
-                ],
-            }
-        ],
-    }
+    org_unit: dict = {"related_units": []}
+    engagements: dict = {"org_unit": [org_unit]}
+    gql_response: dict = {"engagements": [{"objects": [engagements]}]}
     result = await _invoke(gql_response=gql_response)
     assert result.action == ResultType.Action.BAIL_VALIDATION_ERROR
 
@@ -138,42 +123,22 @@ async def test_handle_engagement_update_bails_on_reverse_association() -> None:
     """Test that we bail correctly if GraphQL query result contains a matching
     association in the "reverse" organisation unit.
     """
-    gql_response: dict = {
-        "engagements": [
-            {
-                "objects": [
-                    {
-                        "org_unit": [
-                            {
-                                "uuid": str(uuid.uuid4()),
-                                "related_units": [
-                                    {
-                                        "org_units": [
-                                            {
-                                                "uuid": str(uuid.uuid4()),
-                                                "associations": [
-                                                    {
-                                                        "employee": [
-                                                            {
-                                                                "uuid": str(
-                                                                    _employee_uuid
-                                                                ),
-                                                            }
-                                                        ],
-                                                    }
-                                                ],
-                                            }
-                                        ],
-                                    }
-                                ],
-                            }
-                        ],
-                        **_non_nullable_fields(),
-                    }
-                ],
-            }
-        ],
+    associated_employee: list[dict] = [{"uuid": str(_employee_uuid)}]
+    reverse_related_org_units: list[dict] = [
+        {
+            "uuid": str(uuid.uuid4()),
+            "associations": [{"employee": associated_employee}],
+        }
+    ]
+    org_unit: dict = {
+        "uuid": str(uuid.uuid4()),
+        "related_units": [{"org_units": reverse_related_org_units}],
     }
+    engagements: dict = {
+        "org_unit": [org_unit],
+        **_non_nullable_engagement_fields(),
+    }
+    gql_response: dict = {"engagements": [{"objects": [engagements]}]}
     result = await _invoke(gql_response=gql_response)
     assert result.action == ResultType.Action.BAIL_FOUND_REVERSE_ASSOCIATION
 
@@ -182,41 +147,18 @@ async def test_handle_engagement_update_skips_already_processed_engagement() -> 
     """Test that we bail correctly if GraphQL query result contains a matching
     association in the "current" organisation unit.
     """
-    gql_response: dict = {
-        "engagements": [
-            {
-                "objects": [
-                    {
-                        "org_unit": [
-                            {
-                                "uuid": str(uuid.uuid4()),
-                                "related_units": [
-                                    {
-                                        "org_units": [
-                                            {
-                                                "uuid": str(uuid.uuid4()),
-                                                "associations": [],
-                                            }
-                                        ],
-                                    }
-                                ],
-                                "associations": [
-                                    {
-                                        "employee": [
-                                            {
-                                                "uuid": str(_employee_uuid),
-                                            }
-                                        ],
-                                    }
-                                ],
-                            }
-                        ],
-                        **_non_nullable_fields(),
-                    }
-                ],
-            }
-        ],
+    related_org_units: list[dict] = [{"uuid": str(uuid.uuid4()), "associations": []}]
+    associated_employees: list[dict] = [{"uuid": str(_employee_uuid)}]
+    org_unit: dict = {
+        "uuid": str(uuid.uuid4()),
+        "related_units": [{"org_units": related_org_units}],
+        "associations": [{"employee": associated_employees}],
     }
+    engagements: dict = {
+        "org_unit": [org_unit],
+        **_non_nullable_engagement_fields(),
+    }
+    gql_response: dict = {"engagements": [{"objects": [engagements]}]}
     result = await _invoke(gql_response=gql_response)
     assert result.action == ResultType.Action.SKIP_ALREADY_PROCESSED
 
@@ -228,48 +170,18 @@ async def test_handle_engagement_update_processes_engagement(dry_run: bool) -> N
     "current" or the "other" organisation unit, *and* the current organisation unit has
     a related "other" organisation unit.
     """
-    gql_response: dict = {
-        "engagements": [
-            {
-                "objects": [
-                    {
-                        "org_unit": [
-                            {
-                                "uuid": str(uuid.uuid4()),
-                                "related_units": [
-                                    {
-                                        "org_units": [
-                                            {
-                                                "uuid": str(uuid.uuid4()),
-                                                "associations": [],
-                                            }
-                                        ],
-                                    }
-                                ],
-                                "associations": [
-                                    {
-                                        "employee": [
-                                            {
-                                                "uuid": str(uuid.uuid4()),
-                                            }
-                                        ],
-                                    }
-                                ],
-                            }
-                        ],
-                        "job_function_uuid": str(uuid.uuid4()),
-                        "engagement_type_uuid": str(uuid.uuid4()),
-                        "primary_uuid": str(uuid.uuid4()),
-                        "user_key": "user_key",
-                        "validity": {
-                            "from": "2022-12-31",
-                            "to": None,
-                        },
-                    }
-                ],
-            }
-        ],
+    related_org_units: list[dict] = [{"uuid": str(uuid.uuid4()), "associations": []}]
+    associated_employees: list[dict] = [{"uuid": str(uuid.uuid4())}]
+    org_unit: dict = {
+        "uuid": str(uuid.uuid4()),
+        "related_units": [{"org_units": related_org_units}],
+        "associations": [{"employee": associated_employees}],
     }
+    engagements: dict = {
+        "org_unit": [org_unit],
+        **_non_nullable_engagement_fields(),
+    }
+    gql_response: dict = {"engagements": [{"objects": [engagements]}]}
     settings = _mock_settings(dry_run=dry_run)
     result = await _invoke(gql_response=gql_response, settings=settings)
     assert result.action == ResultType.Action.SUCCESS_PROCESSED_ENGAGEMENT
