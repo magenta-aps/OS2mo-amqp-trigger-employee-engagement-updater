@@ -166,7 +166,7 @@ async def handle_engagement_update(
         return ResultType(action=ResultType.Action.BAIL_NO_RELATED_ORG_UNITS)
 
     # See if we are in the "second event", and `related_units` already have associations
-    reverse_association: _Association = find_current_association(
+    reverse_association: _Association | None = find_current_association(
         employee_uuid, other_unit
     )
     if reverse_association:
@@ -178,7 +178,7 @@ async def handle_engagement_update(
 
     # Check if the current unit already has an association for this employee,
     # indicating that we have already moved the engagement to the "other" unit.
-    current_association: _Association = find_current_association(
+    current_association: _Association | None = find_current_association(
         employee_uuid, current_org_unit
     )
     if current_association is None:
@@ -264,14 +264,16 @@ async def process_engagement(  # pylint: disable=too-many-arguments
 def find_current_association(
     employee_uuid: UUID,
     current_org_unit: _OrgUnit | _OrgUnitWithRelatedUnits,
-) -> _Association:
+) -> _Association | None:
     """Find the first association (if any) in `current_org_unit` whose employee UUID
     matches the given `employee_uuid`.
     """
-    return first_true(
-        current_org_unit.associations,
+    associations: list[_Association] = current_org_unit.associations or []
+    association: _Association | None = first_true(
+        associations,
         pred=lambda assoc: assoc.employee[0].uuid == employee_uuid,
     )
+    return association
 
 
 def find_related_unit(
@@ -282,7 +284,7 @@ def find_related_unit(
     `current_org_unit`. E.g. if units A and B are related, and we pass unit A as the
     `current_org_unit`, this returns unit B.
     """
-    other_unit = first_true(
+    other_unit: _OrgUnit | None = first_true(
         related_units,
         pred=lambda org_unit: org_unit.uuid != current_org_unit.uuid,
     )
