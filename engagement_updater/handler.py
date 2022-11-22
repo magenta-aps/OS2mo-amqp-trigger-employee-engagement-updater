@@ -188,16 +188,38 @@ async def handle_engagement_update(  # pylint: disable=too-many-locals
         employee_uuid, current_associations
     )
     if current_association is None:
-        # Perform the actual changes against the MO API (or log what would happen, in
-        # case of a dry-run.)
-        return await process_engagement(
-            model_client=model_client,
-            employee_uuid=employee_uuid,
-            engagement_uuid=engagement_uuid,
-            current_engagement=current_engagement,
-            current_org_unit=current_org_unit,
-            other_unit=other_unit,
-            settings=settings,
+        # Prepare payload to create association in "current" org unit
+        new_association: Association = get_association_obj(
+            employee_uuid, current_org_unit, settings.association_type
+        )
+        # Prepare payload to edit engagement, so it belongs to the "other" org unit
+        edited_engagement = get_engagement_obj(
+            employee_uuid,
+            engagement_uuid,
+            current_engagement,
+            other_unit,
+        )
+
+        # Perform dry run, or actual API requests, depending on setting
+        if settings.dry_run:
+            _dry_process_engagement(
+                association=new_association,
+                engagement=edited_engagement,
+                engagement_uuid=engagement_uuid,
+            )
+        else:
+            await _process_engagement(
+                association=new_association,
+                engagement=edited_engagement,
+                engagement_uuid=engagement_uuid,
+                model_client=model_client,
+            )
+
+        return ResultType(
+            action=ResultType.Action.SUCCESS_PROCESSED_ENGAGEMENT,
+            engagement=edited_engagement,
+            association=new_association,
+            dry_run=settings.dry_run,
         )
 
     # A current association was found, indicating that we already processed this
@@ -210,63 +232,45 @@ async def handle_engagement_update(  # pylint: disable=too-many-locals
     return ResultType(action=ResultType.Action.SKIP_ALREADY_PROCESSED)
 
 
-async def process_engagement(  # pylint: disable=too-many-arguments
-    model_client: ModelClient,
-    employee_uuid: UUID,
+async def _process_engagement(
+    association: Association,
+    engagement: Engagement,
     engagement_uuid: UUID,
-    current_engagement: _Engagement,
-    current_org_unit: _OrgUnitWithRelatedUnits,
-    other_unit: _OrgUnit,
-    settings: Settings,
-) -> ResultType:
+    model_client: ModelClient,
+) -> None:
     """Edit the engagement and create the association. In case `dry_run` is True, only
     build the MO API payloads, but do not POST them to the API.
     """
-
     # Create association in "current" org unit
-    association: Association = get_association_obj(
-        employee_uuid, current_org_unit, settings.association_type
+    association_response = await model_client.upload_object(association)
+    logger.info(
+        "Created association",
+        response=association_response,
+        engagement_uuid=engagement_uuid,
     )
-    if settings.dry_run:
-        logger.info(
-            "Would create association",
-            association=association,
-            engagement_uuid=engagement_uuid,
-        )
-    else:
-        association_response = await model_client.upload_object(association)
-        logger.info(
-            "Created association",
-            response=association_response,
-            engagement_uuid=engagement_uuid,
-        )
-
     # Edit engagement, so it belongs to the "other" org unit
-    engagement = get_engagement_obj(
-        employee_uuid,
-        engagement_uuid,
-        current_engagement,
-        other_unit,
+    engagement_response = await model_client.upload_object(engagement, edit=True)
+    logger.info(
+        "Updated engagement",
+        response=engagement_response,
+        engagement_uuid=engagement_uuid,
     )
-    if settings.dry_run:
-        logger.info(
-            "Would update engagement",
-            engagement_uuid=engagement_uuid,
-            engagement=engagement,
-        )
-    else:
-        engagement_response = await model_client.upload_object(engagement, edit=True)
-        logger.info(
-            "Updated engagement",
-            response=engagement_response,
-            engagement_uuid=engagement_uuid,
-        )
 
-    return ResultType(
-        action=ResultType.Action.SUCCESS_PROCESSED_ENGAGEMENT,
-        engagement=engagement,
+
+def _dry_process_engagement(
+    association: Association,
+    engagement: Engagement,
+    engagement_uuid: UUID,
+) -> None:
+    logger.info(
+        "Would create association",
         association=association,
-        dry_run=settings.dry_run,
+        engagement_uuid=engagement_uuid,
+    )
+    logger.info(
+        "Would update engagement",
+        engagement_uuid=engagement_uuid,
+        engagement=engagement,
     )
 
 
