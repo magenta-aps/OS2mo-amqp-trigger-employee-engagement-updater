@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import auto
 from enum import Enum
+from functools import cache
 from uuid import UUID
 
 import structlog
@@ -91,6 +92,14 @@ class _EngagementList(BaseModel):
 
 class _Result(BaseModel):
     engagements: list[_EngagementList] = Field(min_items=1, max_items=1)
+
+
+class _ClassUUID(BaseModel):
+    uuid: UUID
+
+
+class _AssociationTypeUUID(BaseModel):
+    classes: list[_ClassUUID] = Field(min_items=1, max_items=1)
 
 
 async def handle_engagement_update(  # pylint: disable=too-many-locals
@@ -200,9 +209,14 @@ async def handle_engagement_update(  # pylint: disable=too-many-locals
         employee_uuid, current_associations
     )
     if current_association is None:
+        # Look up class UUID for the given association type user key
+        association_type_uuid: UUID = await _get_association_type_uuid(
+            settings.association_type,
+            gql_client,
+        )
         # Prepare payload to create association in "current" org unit
         new_association: Association = get_association_obj(
-            employee_uuid, current_org_unit, settings.association_type
+            employee_uuid, current_org_unit, association_type_uuid
         )
         # Prepare payload to edit engagement, so it belongs to the "other" org unit
         edited_engagement = get_engagement_obj(
@@ -348,3 +362,31 @@ def _get_association_list(
     """
     associations: list[_Association] = org_unit.associations or []
     return associations
+
+
+@cache
+async def _get_association_type_uuid(
+    association_type: str,
+    gql_client: PersistentGraphQLClient,
+) -> UUID:
+    """Return the class UUID of the association type specified in settings.
+
+    Args:
+        association_type: `user_key` of the association type to use.
+        gql_client: GraphQL client instance.
+
+    Returns:
+        UUID
+    """
+    query = gql(
+        """
+        query AssociationTypeUUID($user_key: str!) {
+            classes(user_keys: $user_key) {
+                uuid
+            }
+        }
+        """
+    )
+    result: dict = await gql_client.execute(query, {"user_key": association_type})
+    parsed_result: _AssociationTypeUUID = _AssociationTypeUUID.parse_obj(result)
+    return parsed_result.classes[0].uuid

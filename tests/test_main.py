@@ -33,7 +33,7 @@ from engagement_updater.main import construct_clients
 from engagement_updater.main import create_app
 from engagement_updater.main import gather_with_concurrency
 from engagement_updater.main import update_build_information
-from tests import ASSOCIATION_TYPE_UUID
+from tests import ASSOCIATION_TYPE_USER_KEY
 
 
 def get_metric_value(metric: Any, labels: Tuple[str]) -> float:
@@ -137,7 +137,7 @@ def fastapi_app_builder() -> Generator[Callable[..., FastAPI], None, None]:
         if default_args:
             kwargs["client_secret"] = "hunter2"
             kwargs["expose_metrics"] = False
-            kwargs["association_type"] = ASSOCIATION_TYPE_UUID
+            kwargs["association_type"] = ASSOCIATION_TYPE_USER_KEY
         return create_app(*args, **kwargs)
 
     yield builder
@@ -183,7 +183,7 @@ async def test_metrics_endpoint(test_client_builder: Callable[..., TestClient]) 
     test_client = test_client_builder(
         default_args=False,
         client_secret="hunter2",
-        association_type=ASSOCIATION_TYPE_UUID,
+        association_type=ASSOCIATION_TYPE_USER_KEY,
     )
     response = test_client.get("/metrics")
     assert response.status_code == 200
@@ -398,7 +398,7 @@ def test_gql_client_created_with_timeout(mock_gql_client: MagicMock) -> None:
     # Arrange
     settings = get_settings(
         client_secret="not used",
-        association_type=ASSOCIATION_TYPE_UUID,
+        association_type=ASSOCIATION_TYPE_USER_KEY,
         graphql_timeout=15,
     )
 

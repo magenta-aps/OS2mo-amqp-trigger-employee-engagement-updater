@@ -21,7 +21,7 @@ Program functionality:
 * Adjust the `AMQP__URL` variable to point to the currently running message broker (RabbitMQ instance) of your OS2mo installation, either:
   * directly in `docker-compose.yml` or
   * by creating a `docker-compose.override.yaml` file.
-* Configure the required `ASSOCIATION_TYPE_UUID` variable to contain the UUID of the desired association type. 
+* Configure the required `ASSOCIATION_TYPE` variable to contain the user key of the desired association type. 
 This used when the program creates associations marking the origin of the original engagement.
 
 Now start the container using `docker-compose`:

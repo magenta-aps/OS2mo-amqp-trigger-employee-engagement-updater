@@ -12,7 +12,7 @@ services:
       MO_URL: "http://mo"
       CLIENT_ID: "dipex"
       CLIENT_SECRET: "603f1c82-d012-4d04-9382-dbe659c533fb"
-      ASSOCIATION_TYPE: "ec534b86-3d9b-42d8-bff0-afc4f81719af"
+      ASSOCIATION_TYPE: "Automatisk oprettet"
     networks:
       - os2mo_default
     ports:

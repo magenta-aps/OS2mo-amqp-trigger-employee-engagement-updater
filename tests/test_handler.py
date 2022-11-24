@@ -3,6 +3,7 @@
 "Test `engagement_updater.handler`"
 import uuid
 from datetime import datetime
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -14,7 +15,7 @@ from ramqp.mo.models import PayloadType
 from engagement_updater.config import Settings
 from engagement_updater.handler import handle_engagement_update
 from engagement_updater.handler import ResultType
-
+from tests import ASSOCIATION_TYPE_USER_KEY
 
 _employee_uuid = uuid.uuid4()
 
@@ -22,7 +23,7 @@ _employee_uuid = uuid.uuid4()
 def _mock_settings(dry_run: bool = False) -> Settings:
     return Settings(
         dry_run=dry_run,
-        association_type=uuid.uuid4(),
+        association_type=ASSOCIATION_TYPE_USER_KEY,
         client_secret="",
     )
 
@@ -44,9 +45,16 @@ async def _invoke(
     if gql_response is None:
         gql_response = {}
 
+    def _get_gql_response(*args: Any) -> dict | None:
+        # Mock response expected by `_get_association_type_uuid`
+        if len(args) == 2 and args[1] == {"user_key": ASSOCIATION_TYPE_USER_KEY}:
+            return {"classes": [{"uuid": str(uuid.uuid4())}]}
+        # Mock response expected by `handle_engagement_update`
+        return gql_response
+
     # Mock `PersistentGraphQLClient`
     gql_client = AsyncMock()
-    gql_client.execute.return_value = gql_response
+    gql_client.execute.side_effect = _get_gql_response
 
     # Mock `ModelClient`
     model_client = AsyncMock()

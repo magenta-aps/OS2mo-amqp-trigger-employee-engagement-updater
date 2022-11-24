@@ -6,7 +6,6 @@ import logging
 from enum import Enum
 from functools import cache
 from typing import Any
-from uuid import UUID
 
 import structlog
 from pydantic import AnyHttpUrl
@@ -78,10 +77,10 @@ class Settings(BaseSettings):
 
     graphql_timeout: int = 120
 
-    association_type: UUID = Field(
+    association_type: str = Field(
         description=(
-            "UUID of association type to use for new associations created by this"
-            " program."
+            "User key of the association type to use for new associations created by "
+            "this program."
         )
     )
 
