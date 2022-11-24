@@ -169,7 +169,17 @@ async def handle_engagement_update(  # pylint: disable=too-many-locals
     if other_unit is None:
         return ResultType(action=ResultType.Action.BAIL_NO_RELATED_ORG_UNITS)
 
-    # See if we are in the "second event", and `related_units` already have associations
+    # Check if we have already processed this engagement previously, and bail early if
+    # we have.
+    # This can happen in the following way, which we want to prevent:
+    #   1. MO publishes an "engagement created" or "engagement edited" event.
+    #   2. The AMQP trigger (this code) receives the event.
+    #   3. The AMQP trigger edits the MO engagement.
+    #   4. MO publishes an "engagement edited" event for the same engagement.
+    #   5. The AMQP trigger (this code) receives the event.
+    #   6. The AMQP trigger edits the MO engagement.
+    # We want to avoid editing the engagement in step 6, as that would edit the
+    # engagement back to its original state, nullifying the work of this AMQP trigger.
     reverse_associations: list[_Association] = _get_association_list(other_unit)
     reverse_association: _Association | None = find_current_association(
         employee_uuid, reverse_associations
