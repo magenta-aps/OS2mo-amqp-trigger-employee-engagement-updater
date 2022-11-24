@@ -233,13 +233,6 @@ def create_app(  # pylint: disable=too-many-statements
                 payload: PayloadType,
                 **_: Any,
             ) -> ResultType:
-                logger.debug(
-                    "Message received",
-                    service_type=mo_routing_key.service_type,
-                    object_type=mo_routing_key.object_type,
-                    request_type=mo_routing_key.request_type,
-                    payload=payload,
-                )
                 return await handle_engagement_update(
                     gql_client,
                     model_client,
