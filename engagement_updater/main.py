@@ -31,6 +31,7 @@ from ramqp.mo.models import ObjectType
 from ramqp.mo.models import PayloadType
 from ramqp.mo.models import RequestType
 from ramqp.mo.models import ServiceType
+from ramqp.utils import sleep_on_error
 from starlette.status import HTTP_202_ACCEPTED
 from starlette.status import HTTP_204_NO_CONTENT
 from starlette.status import HTTP_503_SERVICE_UNAVAILABLE
@@ -226,6 +227,7 @@ def create_app(  # pylint: disable=too-many-statements
             @router.register(
                 ServiceType.EMPLOYEE, ObjectType.ENGAGEMENT, RequestType.WILDCARD
             )
+            @sleep_on_error
             async def on_amqp_message(
                 mo_routing_key: MORoutingKey,
                 payload: PayloadType,
