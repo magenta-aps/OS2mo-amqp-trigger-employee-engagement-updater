@@ -110,7 +110,7 @@ async def handle_engagement_update(  # pylint: disable=too-many-locals
     settings: Settings,
 ) -> ResultType:
     """Perform the central business logic of the program."""
-    global logger
+    global logger  # pylint: disable=global-statement,invalid-name
 
     if mo_routing_key.request_type == RequestType.TERMINATE:
         logger.info("Don't yet know how to handle engagement terminations, sorry")

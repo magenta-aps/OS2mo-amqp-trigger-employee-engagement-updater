@@ -224,10 +224,10 @@ def create_app(  # pylint: disable=too-many-statements
             router = MORouter()
             amqp_system = MOAMQPSystem(settings=settings.amqp, router=router)
 
+            @sleep_on_error
             @router.register(
                 ServiceType.EMPLOYEE, ObjectType.ENGAGEMENT, RequestType.WILDCARD
             )
-            @sleep_on_error
             async def on_amqp_message(
                 mo_routing_key: MORoutingKey,
                 payload: PayloadType,
