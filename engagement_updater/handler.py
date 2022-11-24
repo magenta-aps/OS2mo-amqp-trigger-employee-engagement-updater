@@ -101,6 +101,7 @@ async def handle_engagement_update(  # pylint: disable=too-many-locals
     settings: Settings,
 ) -> ResultType:
     """Perform the central business logic of the program."""
+    global logger
 
     if mo_routing_key.request_type == RequestType.TERMINATE:
         logger.info("Don't yet know how to handle engagement terminations, sorry")
@@ -108,6 +109,10 @@ async def handle_engagement_update(  # pylint: disable=too-many-locals
 
     employee_uuid = payload.uuid
     engagement_uuid = payload.object_uuid
+
+    # Always include engagement UUID in logged messages.
+    # This mutates the state of the module-level `logger` variable.
+    logger = logger.bind(engagement_uuid=engagement_uuid)
 
     # Examine existing engagement and see if it:
     # * resides in an organisation unit which is linked to another related unit, and
@@ -185,10 +190,7 @@ async def handle_engagement_update(  # pylint: disable=too-many-locals
         employee_uuid, reverse_associations
     )
     if reverse_association:
-        logger.info(
-            "Found association in other unit, doing nothing",
-            engagement_uuid=engagement_uuid,
-        )
+        logger.info("Found association in other unit, doing nothing")
         return ResultType(action=ResultType.Action.BAIL_FOUND_REVERSE_ASSOCIATION)
 
     # Check if the current unit already has an association for this employee,
@@ -215,13 +217,11 @@ async def handle_engagement_update(  # pylint: disable=too-many-locals
             _dry_process_engagement(
                 association=new_association,
                 engagement=edited_engagement,
-                engagement_uuid=engagement_uuid,
             )
         else:
             await _process_engagement(
                 association=new_association,
                 engagement=edited_engagement,
-                engagement_uuid=engagement_uuid,
                 model_client=model_client,
             )
 
@@ -237,7 +237,6 @@ async def handle_engagement_update(  # pylint: disable=too-many-locals
     logger.info(
         "Already processed this engagement, doing nothing",
         current_association=current_association,
-        engagement_uuid=engagement_uuid,
     )
     return ResultType(action=ResultType.Action.SKIP_ALREADY_PROCESSED)
 
@@ -245,7 +244,6 @@ async def handle_engagement_update(  # pylint: disable=too-many-locals
 async def _process_engagement(
     association: Association,
     engagement: Engagement,
-    engagement_uuid: UUID,
     model_client: ModelClient,
 ) -> None:
     """Edit the engagement and create the association. In case `dry_run` is True, only
@@ -253,35 +251,18 @@ async def _process_engagement(
     """
     # Create association in "current" org unit
     association_response = await model_client.upload_object(association)
-    logger.info(
-        "Created association",
-        response=association_response,
-        engagement_uuid=engagement_uuid,
-    )
+    logger.info("Created association", response=association_response)
     # Edit engagement, so it belongs to the "other" org unit
     engagement_response = await model_client.upload_object(engagement, edit=True)
-    logger.info(
-        "Updated engagement",
-        response=engagement_response,
-        engagement_uuid=engagement_uuid,
-    )
+    logger.info("Updated engagement", response=engagement_response)
 
 
 def _dry_process_engagement(
     association: Association,
     engagement: Engagement,
-    engagement_uuid: UUID,
 ) -> None:
-    logger.info(
-        "Would create association",
-        association=association,
-        engagement_uuid=engagement_uuid,
-    )
-    logger.info(
-        "Would update engagement",
-        engagement_uuid=engagement_uuid,
-        engagement=engagement,
-    )
+    logger.info("Would create association", association=association)
+    logger.info("Would update engagement", engagement=engagement)
 
 
 def find_current_association(
