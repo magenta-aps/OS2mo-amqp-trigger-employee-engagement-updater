@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import auto
 from enum import Enum
-from functools import cache
 from uuid import UUID
 
 import structlog
@@ -377,7 +376,6 @@ def _get_association_list(
     return associations
 
 
-@cache
 async def _get_association_type_uuid(
     association_type: str,
     gql_client: PersistentGraphQLClient,
@@ -393,15 +391,20 @@ async def _get_association_type_uuid(
     """
     query = gql(
         """
-        query AssociationTypeUUID($user_key: str!) {
-            classes(user_keys: $user_key) {
+        query AssociationTypeUUID($user_keys: [String!]) {
+            classes(user_keys: $user_keys) {
                 uuid
             }
         }
         """
     )
-    result: dict = await gql_client.execute(query, {"user_key": association_type})
-    parsed_result: _AssociationTypeUUID = _AssociationTypeUUID.parse_obj(result)
+    result: dict = await gql_client.execute(query, {"user_keys": [association_type]})
+    try:
+        parsed_result: _AssociationTypeUUID = _AssociationTypeUUID.parse_obj(result)
+    except ValidationError as exc:
+        raise ValueError(
+            f"could not find class UUID for class with user_key={association_type!r}"
+        ) from exc
     return parsed_result.classes[0].uuid
 
 
