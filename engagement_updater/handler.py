@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import auto
 from enum import Enum
+from typing import AsyncGenerator
 from uuid import UUID
 
 import structlog
@@ -114,7 +115,8 @@ class _EngagementResult(BaseModel):
     engagements: list[_EngagementFlat]
 
 
-async def handle_engagement_update(  # pylint: disable=too-many-locals
+async def handle_engagement_update(
+    # pylint: disable=too-many-locals,too-many-return-statements
     gql_client: PersistentGraphQLClient,
     model_client: ModelClient,
     settings: Settings,
@@ -417,8 +419,18 @@ async def _get_association_type_uuid(
 
 
 async def get_bulk_update_payloads(
-    gql_client: PersistentGraphQLClient
-) -> iter[PayloadType]:
+    gql_client: PersistentGraphQLClient,
+) -> AsyncGenerator[PayloadType, None]:
+    """Return an async generator over payloads suitable as the last argument to
+    `handle_engagement_update`.
+    Used for bulk processing of all engagements.
+
+    Args:
+        gql_client: GraphQL client to use for retrieving engagement list
+
+    Returns:
+        async generator over `PayloadType
+    """
     # Retrieve all engagement UUIDs, as well as the employee UUID for each engagement
     query = gql(
         """

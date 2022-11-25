@@ -6,8 +6,8 @@
 import asyncio
 from datetime import datetime
 from time import monotonic
-from typing import AsyncGenerator
 from typing import Any
+from typing import AsyncGenerator
 from typing import Callable
 from typing import cast
 from typing import Generator
@@ -33,8 +33,8 @@ from ramqp.mo.models import RequestType
 from ramqp.mo.models import ServiceType
 from starlette.status import HTTP_202_ACCEPTED
 
-from engagement_updater.config import Settings
 from engagement_updater.config import get_settings
+from engagement_updater.config import Settings
 from engagement_updater.main import build_information
 from engagement_updater.main import construct_clients
 from engagement_updater.main import create_app
@@ -203,7 +203,7 @@ async def test_trigger_all_endpoint(
 ) -> None:
     """Test the trigger all endpoint on our app."""
     # Arrange: mock `get_bulk_update_payloads` return value
-    async def _async_generator(item) -> AsyncGenerator:
+    async def _async_generator(item: Any) -> AsyncGenerator:
         yield item
 
     # Arrange: context
@@ -237,7 +237,11 @@ async def test_trigger_all_endpoint(
     assert response.json() == {"status": "Background job triggered"}
     get_bulk_update_payloads.assert_called_once_with(gql_client)
     handle_engagement_update.assert_called_once_with(
-        gql_client, model_client, ANY, ANY, payload,
+        gql_client,
+        model_client,
+        ANY,
+        ANY,
+        payload,
     )
 
 
