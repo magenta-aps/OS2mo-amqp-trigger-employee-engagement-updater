@@ -70,7 +70,7 @@ class _OrgUnitList(BaseModel):
 
 class _OrgUnitWithRelatedUnits(BaseModel):
     uuid: UUID
-    related_units: list[_OrgUnitList] = Field(min_items=1, max_items=1)
+    related_units: list[_OrgUnitList] = Field(min_items=0, max_items=1)
     associations: list[_Association] | None = Field(None, min_items=0)
 
 
@@ -187,7 +187,15 @@ async def handle_engagement_update(  # pylint: disable=too-many-locals
     # found in the response (we may still encounter empty lists, however.)
     current_engagement: _Engagement = parsed_result.engagements[0].objects[0]
     current_org_unit: _OrgUnitWithRelatedUnits = current_engagement.org_units[0]
-    related_units: list[_OrgUnit] = current_org_unit.related_units[0].org_units
+
+    if current_org_unit.related_units:
+        related_units: list[_OrgUnit] = current_org_unit.related_units[0].org_units
+    else:
+        logger.info(
+            "No related org units found for org unit",
+            current_org_unit_uuid=current_org_unit.uuid,
+        )
+        return ResultType(action=ResultType.Action.BAIL_NO_RELATED_ORG_UNITS)
 
     # Find the "other" org unit, e.g. the related unit B, if we are currently looking at
     # unit A, or vice versa.
