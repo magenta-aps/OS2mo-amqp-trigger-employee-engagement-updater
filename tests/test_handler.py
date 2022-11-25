@@ -47,7 +47,7 @@ async def _invoke(
 
     def _get_gql_response(*args: Any) -> dict | None:
         # Mock response expected by `_get_association_type_uuid`
-        if len(args) == 2 and args[1] == {"user_key": ASSOCIATION_TYPE_USER_KEY}:
+        if len(args) == 2 and args[1] == {"user_keys": [ASSOCIATION_TYPE_USER_KEY]}:
             return {"classes": [{"uuid": str(uuid.uuid4())}]}
         # Mock response expected by `handle_engagement_update`
         return gql_response
