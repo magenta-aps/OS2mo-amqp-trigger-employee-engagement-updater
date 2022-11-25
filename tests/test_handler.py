@@ -69,9 +69,9 @@ async def _invoke(
     result: ResultType = await handle_engagement_update(
         gql_client,
         model_client,
+        settings,
         MORoutingKey.from_routing_key(routing_key),
         payload,
-        settings,
     )
 
     # Assert no MO upload API call is made during dry runs

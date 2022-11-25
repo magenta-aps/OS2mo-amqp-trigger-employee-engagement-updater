@@ -4,18 +4,22 @@
 # pylint: disable=too-many-arguments
 "Test `engagement_updater.main`"
 import asyncio
+from datetime import datetime
 from time import monotonic
+from typing import AsyncGenerator
 from typing import Any
 from typing import Callable
 from typing import cast
 from typing import Generator
 from typing import Set
 from typing import Tuple
+from unittest.mock import ANY
 from unittest.mock import AsyncMock
 from unittest.mock import call
 from unittest.mock import MagicMock
 from unittest.mock import patch
 from uuid import UUID
+from uuid import uuid4
 
 import pytest
 from asgi_lifespan import LifespanManager
@@ -24,9 +28,12 @@ from fastapi.testclient import TestClient
 from ramqp.mo import MOAMQPSystem
 from ramqp.mo import MORouter
 from ramqp.mo.models import ObjectType
+from ramqp.mo.models import PayloadType
 from ramqp.mo.models import RequestType
 from ramqp.mo.models import ServiceType
+from starlette.status import HTTP_202_ACCEPTED
 
+from engagement_updater.config import Settings
 from engagement_updater.config import get_settings
 from engagement_updater.main import build_information
 from engagement_updater.main import construct_clients
@@ -189,29 +196,49 @@ async def test_metrics_endpoint(test_client_builder: Callable[..., TestClient]) 
     assert response.status_code == 200
 
 
-@patch("engagement_updater.main.construct_context")
+@patch("engagement_updater.main.handle_engagement_update")
 async def test_trigger_all_endpoint(
-    construct_context: MagicMock,
+    handle_engagement_update: MagicMock,
     test_client_builder: Callable[..., TestClient],
 ) -> None:
     """Test the trigger all endpoint on our app."""
+    # Arrange: mock `get_bulk_update_payloads` return value
+    async def _async_generator(item) -> AsyncGenerator:
+        yield item
+
+    # Arrange: context
     gql_client = AsyncMock()
-    gql_client.execute.return_value = {
-        "org_units": [{"uuid": "30206243-d930-4a69-bcfa-62e3292837d3"}]
-    }
-    seeded_update_line_management = AsyncMock()
-    construct_context.return_value = {
+    model_client = AsyncMock()
+    settings = MagicMock(spec=Settings)
+    context = {
         "gql_client": gql_client,
-        "seeded_update_line_management": seeded_update_line_management,
+        "model_client": model_client,
+        "settings": settings,
     }
-    test_client = test_client_builder()
-    response = test_client.post("/trigger/all")
-    assert response.status_code == 202
+
+    # Arrange: mock payload returned by `get_bulk_update_payloads`
+    payload = PayloadType(
+        uuid=uuid4(),
+        object_uuid=uuid4(),
+        time=datetime.now(),
+    )
+
+    # Act
+    with patch("engagement_updater.main.construct_context", return_value=context):
+        test_client = test_client_builder()
+        with patch(
+            "engagement_updater.main.get_bulk_update_payloads",
+            return_value=_async_generator(payload),
+        ) as get_bulk_update_payloads:
+            response = test_client.post("/trigger/all")
+
+    # Assert
+    assert response.status_code == HTTP_202_ACCEPTED
     assert response.json() == {"status": "Background job triggered"}
-    assert len(gql_client.execute.mock_calls) == 1
-    assert seeded_update_line_management.mock_calls == [
-        call(UUID("30206243-d930-4a69-bcfa-62e3292837d3"))
-    ]
+    get_bulk_update_payloads.assert_called_once_with(gql_client)
+    handle_engagement_update.assert_called_once_with(
+        gql_client, model_client, ANY, ANY, payload,
+    )
 
 
 @patch("engagement_updater.main.construct_context")

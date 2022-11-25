@@ -5,7 +5,7 @@ from asyncio import gather
 from asyncio import Semaphore
 from contextlib import asynccontextmanager
 from contextlib import AsyncExitStack
-from operator import itemgetter
+from functools import partial
 from typing import Any
 from typing import AsyncGenerator
 from typing import Awaitable
@@ -38,6 +38,7 @@ from starlette.status import HTTP_503_SERVICE_UNAVAILABLE
 
 from .config import get_settings
 from .config import Settings
+from .handler import get_bulk_update_payloads
 from .handler import handle_engagement_update
 from .handler import ResultType
 
@@ -206,6 +207,8 @@ def create_app(  # pylint: disable=too-many-statements
 
     context = construct_context()
 
+    context["settings"] = settings
+
     # pylint: disable=unused-argument
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncGenerator:
@@ -236,9 +239,9 @@ def create_app(  # pylint: disable=too-many-statements
                 return await handle_engagement_update(
                     gql_client,
                     model_client,
+                    settings,
                     mo_routing_key,
                     payload,
-                    settings,
                 )
 
             context["amqp_system"] = amqp_system
@@ -257,16 +260,27 @@ def create_app(  # pylint: disable=too-many-statements
         return {"name": "engagement_updater"}
 
     @app.post("/trigger/all", status_code=HTTP_202_ACCEPTED)
-    async def update_all_org_units(background_tasks: BackgroundTasks) -> dict[str, str]:
-        """Call update_line_management on all org units."""
-        gql_client = context["gql_client"]
-        query = gql("query OrgUnitUUIDQuery { org_units { uuid } }")
-        result = await gql_client.execute(query)
-
-        org_unit_uuids = list(map(UUID, map(itemgetter("uuid"), result["org_units"])))
-        logger.info("Manually triggered recalculation", uuids=org_unit_uuids)
-        org_unit_tasks = map(context["seeded_update_line_management"], org_unit_uuids)
-        background_tasks.add_task(gather_with_concurrency, 5, *org_unit_tasks)
+    async def bulk_update(background_tasks: BackgroundTasks) -> dict[str, str]:
+        """Call `handle_engagement_update` on all engagements"""
+        gql_client: PersistentGraphQLClient = context["gql_client"]
+        model_client: ModelClient = context["model_client"]
+        settings: Settings = context["settings"]
+        mo_routing_key: MORoutingKey = MORoutingKey.from_tuple(
+            (ServiceType.EMPLOYEE, ObjectType.ENGAGEMENT, RequestType.EDIT)
+        )
+        # Create curried version of `handle_engagement_update` which only requires the
+        # final `payload` argument.
+        handle = partial(
+            handle_engagement_update,
+            gql_client,
+            model_client,
+            settings,
+            mo_routing_key,
+        )
+        # Create tasks for `handle(payload)` which is equivalent to
+        # `handle_engagement_update(..., payload)`.
+        async for payload in get_bulk_update_payloads(gql_client):
+            background_tasks.add_task(handle, payload)
         return {"status": "Background job triggered"}
 
     @app.post("/trigger/{uuid}")

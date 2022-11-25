@@ -102,12 +102,25 @@ class _AssociationTypeUUID(BaseModel):
     classes: list[_ClassUUID] = Field(min_items=1, max_items=1)
 
 
+class _EmployeeFlat(BaseModel):
+    employee_uuid: UUID
+
+
+class _EngagementFlat(BaseModel):
+    uuid: UUID
+    objects: list[_EmployeeFlat]
+
+
+class _EngagementResult(BaseModel):
+    engagements: list[_EngagementFlat]
+
+
 async def handle_engagement_update(  # pylint: disable=too-many-locals
     gql_client: PersistentGraphQLClient,
     model_client: ModelClient,
+    settings: Settings,
     mo_routing_key: MORoutingKey,
     payload: PayloadType,
-    settings: Settings,
 ) -> ResultType:
     """Perform the central business logic of the program."""
     global logger  # pylint: disable=global-statement,invalid-name
@@ -390,3 +403,31 @@ async def _get_association_type_uuid(
     result: dict = await gql_client.execute(query, {"user_key": association_type})
     parsed_result: _AssociationTypeUUID = _AssociationTypeUUID.parse_obj(result)
     return parsed_result.classes[0].uuid
+
+
+async def get_bulk_update_payloads(
+    gql_client: PersistentGraphQLClient
+) -> iter[PayloadType]:
+    # Retrieve all engagement UUIDs, as well as the employee UUID for each engagement
+    query = gql(
+        """
+        query EngagementUUID {
+            engagements {
+                uuid
+                objects {
+                    employee_uuid
+                }
+            }
+        }
+        """
+    )
+    result: dict = await gql_client.execute(query)
+    parsed_result: _EngagementResult = _EngagementResult.parse_obj(result)
+    # Yield a payload for each engagement found
+    for engagement in parsed_result.engagements:
+        for employee in engagement.objects:
+            yield PayloadType(
+                uuid=employee.employee_uuid,
+                object_uuid=engagement.uuid,
+                time=datetime.now(),
+            )
