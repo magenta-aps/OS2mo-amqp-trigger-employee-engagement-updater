@@ -14,6 +14,8 @@ from ramqp.mo.models import PayloadType
 
 from engagement_updater.config import Settings
 from engagement_updater.handler import _get_association_type_uuid
+from engagement_updater.handler import get_bulk_update_payloads
+from engagement_updater.handler import get_single_update_payload
 from engagement_updater.handler import handle_engagement_update
 from engagement_updater.handler import ResultType
 from tests import ASSOCIATION_TYPE_USER_KEY
@@ -223,3 +225,48 @@ async def test_get_association_type_uuid_raises_valueerror() -> None:
     with pytest.raises(ValueError):
         await _get_association_type_uuid(ASSOCIATION_TYPE_USER_KEY, gql_client)
 
+
+def _get_mock_gql_client_for_engagement_query(
+    employee_uuid: uuid.UUID,
+    engagement_uuid: uuid.UUID,
+) -> AsyncMock:
+    employee_uuid: list[dict] = [{"employee_uuid": str(employee_uuid)}]
+    engagements: list[dict] = [
+        {
+            "uuid": str(engagement_uuid),
+            "objects": employee_uuid,
+        }
+    ]
+    gql_client = AsyncMock()
+    gql_client.execute.return_value = {"engagements": engagements}
+    return gql_client
+
+
+async def test_get_bulk_update_payloads() -> None:
+    """Test that `get_bulk_update_payloads` returns the expected payload.
+    In this test, we mock a single engagement in the GQL response, and assert that the
+    payload contains the expected employee and engagement UUIDs.
+    """
+    expected_employee_uuid: uuid.UUID = uuid.uuid4()
+    expected_engagement_uuid: uuid.UUID = uuid.uuid4()
+    gql_client: AsyncMock = _get_mock_gql_client_for_engagement_query(
+        expected_employee_uuid, expected_engagement_uuid
+    )
+    async for payload in get_bulk_update_payloads(gql_client):
+        assert payload.uuid == expected_employee_uuid
+        assert payload.object_uuid == expected_engagement_uuid
+
+
+async def test_get_single_update_payload() -> None:
+    """Test that `get_single_update_payload` returns the expected payload.
+    In this test, we mock a single engagement matching the given engagment UUID, and
+    assert that the payload contains the expected employee UUID.
+    """
+    expected_employee_uuid: uuid.UUID = uuid.uuid4()
+    engagement_uuid: uuid.UUID = uuid.uuid4()
+    gql_client: AsyncMock = _get_mock_gql_client_for_engagement_query(
+        expected_employee_uuid, engagement_uuid
+    )
+    async for payload in get_single_update_payload(gql_client, engagement_uuid):
+        assert payload.uuid == expected_employee_uuid
+        assert payload.object_uuid == engagement_uuid
