@@ -119,7 +119,7 @@ async def test_handle_engagement_update_bails_on_no_org_unit_for_engagement() ->
     assert result.action == ResultType.Action.BAIL_VALIDATION_ERROR
 
 
-async def test_handle_engagement_update_bails_on_no_related_org_units() -> None:
+async def test_handle_engagement_update_bails_on_missing_related_units() -> None:
     """Test that we bail correctly if GraphQL query result does not contain any related
     organisation units.
     """
@@ -128,6 +128,48 @@ async def test_handle_engagement_update_bails_on_no_related_org_units() -> None:
     gql_response: dict = {"engagements": [{"objects": [engagements]}]}
     result = await _invoke(gql_response=gql_response)
     assert result.action == ResultType.Action.BAIL_VALIDATION_ERROR
+
+
+async def test_handle_engagement_update_bails_on_empty_related_org_units() -> None:
+    """Test that we bail correctly if GraphQL query result contains an empty list
+    of related org units.
+    """
+    org_unit: dict = {
+        "uuid": str(uuid.uuid4()),
+        "related_units": [],
+    }
+    engagements: dict = {
+        "org_unit": [org_unit],
+        **_non_nullable_engagement_fields(),
+    }
+    gql_response: dict = {"engagements": [{"objects": [engagements]}]}
+    result = await _invoke(gql_response=gql_response)
+    assert result.action == ResultType.Action.BAIL_NO_RELATED_ORG_UNITS
+
+
+async def test_handle_engagement_update_bails_on_incomplete_related_org_units() -> None:
+    """Test that we bail correctly if GraphQL query result does not contain a "full"
+    list of related org units, e.g. a list containing two org units, one being "this"
+    org unit, and the other being the "other" org unit.
+    """
+    org_unit_uuid = uuid.uuid4()
+    related_units: list[dict] = [
+        {
+            "uuid": str(org_unit_uuid),
+            "associations": [],
+        }
+    ]
+    org_unit: dict = {
+        "uuid": str(org_unit_uuid),
+        "related_units": [{"org_units": related_units}],
+    }
+    engagements: dict = {
+        "org_unit": [org_unit],
+        **_non_nullable_engagement_fields(),
+    }
+    gql_response: dict = {"engagements": [{"objects": [engagements]}]}
+    result = await _invoke(gql_response=gql_response)
+    assert result.action == ResultType.Action.BAIL_NO_RELATED_ORG_UNITS
 
 
 async def test_handle_engagement_update_bails_on_reverse_association() -> None:
