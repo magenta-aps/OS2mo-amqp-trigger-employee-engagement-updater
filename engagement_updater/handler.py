@@ -350,7 +350,7 @@ def get_association_obj(
         org_unit_uuid=current_org_unit.uuid,
         association_type_uuid=association_type_uuid,
         # TODO: should the from date be identical to the from date of the engagement?
-        from_date=datetime.now().date(),
+        from_date=datetime.now().strftime("%Y-%m-%d"),
     )
 
 
@@ -372,7 +372,7 @@ def get_engagement_obj(
         engagement_type_uuid=engagement.engagement_type_uuid,
         primary_uuid=engagement.primary_uuid,
         user_key=engagement.user_key,
-        from_date=engagement.validity.from_date.date(),
+        from_date=engagement.validity.from_date.strftime("%Y-%m-%d"),
     )
 
 
