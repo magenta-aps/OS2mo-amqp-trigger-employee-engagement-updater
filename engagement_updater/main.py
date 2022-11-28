@@ -9,6 +9,7 @@ from functools import partial
 from typing import Any
 from typing import AsyncGenerator
 from typing import Awaitable
+from typing import Callable
 from typing import Tuple
 from typing import TypeVar
 from uuid import UUID
@@ -39,6 +40,7 @@ from starlette.status import HTTP_503_SERVICE_UNAVAILABLE
 from .config import get_settings
 from .config import Settings
 from .handler import get_bulk_update_payloads
+from .handler import get_single_update_payload
 from .handler import handle_engagement_update
 from .handler import ResultType
 
@@ -263,35 +265,24 @@ def create_app(  # pylint: disable=too-many-statements
     async def bulk_update(background_tasks: BackgroundTasks) -> dict[str, str]:
         """Call `handle_engagement_update` on all engagements"""
         gql_client: PersistentGraphQLClient = context["gql_client"]
-        model_client: ModelClient = context["model_client"]
-        settings: Settings = context["settings"]
-        mo_routing_key: MORoutingKey = MORoutingKey.from_tuple(
-            (ServiceType.EMPLOYEE, ObjectType.ENGAGEMENT, RequestType.EDIT)
-        )
-        # Create curried version of `handle_engagement_update` which only requires the
-        # final `payload` argument.
-        handle = partial(
-            handle_engagement_update,
-            gql_client,
-            model_client,
-            settings,
-            mo_routing_key,
-        )
-        # Create tasks for `handle(payload)` which is equivalent to
-        # `handle_engagement_update(..., payload)`.
+        handle = _get_curried_handle_engagement_update(context)
+        # Create tasks for `handle(payload)` (which is equivalent to
+        # `handle_engagement_update(..., payload)`.)
         async for payload in get_bulk_update_payloads(gql_client):
             background_tasks.add_task(handle, payload)
         return {"status": "Background job triggered"}
 
     @app.post("/trigger/{uuid}")
-    async def update_org_unit(
-        uuid: UUID = Query(
-            ..., description="UUID of the organisation unit to recalculate"
-        )
+    async def single_update(
+        uuid: UUID = Query(..., description="UUID of the engagement to process"),
     ) -> dict[str, str]:
-        """Call update_line_management on the provided org unit."""
-        logger.info("Manually triggered recalculation", uuids=[uuid])
-        await context["seeded_update_line_management"](uuid)
+        """Call `handle_engagement_update` on specific engagement"""
+        gql_client: PersistentGraphQLClient = context["gql_client"]
+        handle = _get_curried_handle_engagement_update(context)
+        # Create tasks for `handle(payload)` (which is equivalent to
+        # `handle_engagement_update(..., payload)`.)
+        async for payload in get_single_update_payload(gql_client):
+            handle(payload)
         return {"status": "OK"}
 
     @app.get("/health/live", status_code=HTTP_204_NO_CONTENT)
@@ -335,3 +326,25 @@ def create_app(  # pylint: disable=too-many-statements
         return response
 
     return app
+
+def _get_curried_handle_engagement_update(
+    context: dict
+) -> Callable[
+    [PersistentGraphQLClient, ModelClient, Settings, MORoutingKey],
+    Callable[[PayloadType], ResultType]
+]:
+    gql_client: PersistentGraphQLClient = context["gql_client"]
+    model_client: ModelClient = context["model_client"]
+    settings: Settings = context["settings"]
+    mo_routing_key: MORoutingKey = MORoutingKey.from_tuple(
+        (ServiceType.EMPLOYEE, ObjectType.ENGAGEMENT, RequestType.EDIT)
+    )
+    # Create curried version of `handle_engagement_update` which only requires the
+    # final `payload` argument.
+    return partial(
+        handle_engagement_update,
+        gql_client,
+        model_client,
+        settings,
+        mo_routing_key,
+    )

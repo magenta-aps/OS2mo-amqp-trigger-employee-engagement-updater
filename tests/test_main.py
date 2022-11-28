@@ -32,6 +32,7 @@ from ramqp.mo.models import PayloadType
 from ramqp.mo.models import RequestType
 from ramqp.mo.models import ServiceType
 from starlette.status import HTTP_202_ACCEPTED
+from starlette.status import HTTP_200_OK
 
 from engagement_updater.config import get_settings
 from engagement_updater.config import Settings
@@ -245,23 +246,54 @@ async def test_trigger_all_endpoint(
     )
 
 
-@patch("engagement_updater.main.construct_context")
+@patch("engagement_updater.main.handle_engagement_update")
 async def test_trigger_uuid_endpoint(
-    construct_context: MagicMock,
+    handle_engagement_update: MagicMock,
     test_client_builder: Callable[..., TestClient],
 ) -> None:
     """Test the trigger uuid endpoint on our app."""
-    seeded_update_line_management = AsyncMock()
-    construct_context.return_value = {
-        "seeded_update_line_management": seeded_update_line_management
+    # Arrange: mock `get_single_update_payload` return value
+    async def _async_generator(item: Any) -> AsyncGenerator:
+        yield item
+
+    # Arrange: context
+    gql_client = AsyncMock()
+    model_client = AsyncMock()
+    settings = MagicMock(spec=Settings)
+    context = {
+        "gql_client": gql_client,
+        "model_client": model_client,
+        "settings": settings,
     }
-    test_client = test_client_builder()
-    response = test_client.post("/trigger/0a9d7211-16a1-47e1-82da-7ec8480e7487")
-    assert response.status_code == 200
+
+    # Arrange: mock payload returned by `get_single_update_payload`
+    engagement_uuid: UUID = uuid4()
+    payload = PayloadType(
+        uuid=uuid4(),  # employee UUID
+        object_uuid=engagement_uuid,
+        time=datetime.now(),
+    )
+
+    # Act
+    with patch("engagement_updater.main.construct_context", return_value=context):
+        test_client = test_client_builder()
+        with patch(
+            "engagement_updater.main.get_single_update_payload",
+            return_value=_async_generator(payload),
+        ) as get_single_update_payload:
+            response = test_client.post(f"/trigger/{str(engagement_uuid)}")
+
+    # Assert
+    assert response.status_code == HTTP_200_OK
     assert response.json() == {"status": "OK"}
-    assert seeded_update_line_management.mock_calls == [
-        call(UUID("0a9d7211-16a1-47e1-82da-7ec8480e7487"))
-    ]
+    get_single_update_payload.assert_called_once_with(gql_client)
+    handle_engagement_update.assert_called_once_with(
+        gql_client,
+        model_client,
+        ANY,
+        ANY,
+        payload,
+    )
 
 
 @patch("engagement_updater.main.MOAMQPSystem")

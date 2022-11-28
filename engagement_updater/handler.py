@@ -454,3 +454,31 @@ async def get_bulk_update_payloads(
                 object_uuid=engagement.uuid,
                 time=datetime.now(),
             )
+
+
+async def get_single_update_payload(
+    gql_client: PersistentGraphQLClient,
+    engagement_uuid: UUID,
+) -> AsyncGenerator[PayloadType, None]:
+    query = gql(
+        """
+        query EngagementUUID($uuids: [UUID!]) {
+            engagements(uuids: $uuids) {
+                uuid
+                objects {
+                    employee_uuid
+                }
+            }
+        }
+        """
+    )
+    result: dict = await gql_client.execute(query, {"uuids": str(engagement_uuid)})
+    parsed_result: _EngagementResult = _EngagementResult.parse_obj(result)
+    # Yield a payload for 0 or 1 engagements found
+    for engagement in parsed_result.engagements:
+        for employee in engagement.objects:
+            yield PayloadType(
+                uuid=employee.employee_uuid,
+                object_uuid=engagement.uuid,
+                time=datetime.now(),
+            )
