@@ -13,6 +13,7 @@ from ramqp.mo.models import MORoutingKey
 from ramqp.mo.models import PayloadType
 
 from engagement_updater.config import Settings
+from engagement_updater.handler import _get_association_type_uuid
 from engagement_updater.handler import handle_engagement_update
 from engagement_updater.handler import ResultType
 from tests import ASSOCIATION_TYPE_USER_KEY
@@ -196,3 +197,29 @@ async def test_handle_engagement_update_processes_engagement(dry_run: bool) -> N
     assert result.dry_run == dry_run
     assert isinstance(result.engagement, Engagement)
     assert isinstance(result.association, Association)
+
+
+async def test_get_association_type_uuid_finds_uuid() -> None:
+    """Test that `get_association_type_uuid` finds the association type UUID in the GQL
+    response.
+    """
+    expected_association_type_uuid: uuid.UUID = uuid.uuid4()
+    gql_client = AsyncMock()
+    gql_client.execute.return_value = {
+        "classes": [{"uuid": str(expected_association_type_uuid)}]
+    }
+    actual_association_type_uuid: uuid.UUID = await _get_association_type_uuid(
+        ASSOCIATION_TYPE_USER_KEY, gql_client,
+    )
+    assert actual_association_type_uuid == expected_association_type_uuid
+
+
+async def test_get_association_type_uuid_raises_valueerror() -> None:
+    """Test that `get_association_type_uuid` raises `ValueError` if it cannot find the
+    association type UUID in the GQL response.
+    """
+    gql_client = AsyncMock()
+    gql_client.execute.return_value = {}  # empty response
+    with pytest.raises(ValueError):
+        await _get_association_type_uuid(ASSOCIATION_TYPE_USER_KEY, gql_client)
+
