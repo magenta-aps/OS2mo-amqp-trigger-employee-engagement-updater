@@ -460,6 +460,18 @@ async def get_single_update_payload(
     gql_client: PersistentGraphQLClient,
     engagement_uuid: UUID,
 ) -> AsyncGenerator[PayloadType, None]:
+    """Return an async generator over payloads suitable as the last argument to
+    `handle_engagement_update`.
+    Used for processing a single engagement specified by its UUID.
+    Note: this function is expected to always generate a *single* payload.
+
+    Args:
+        gql_client: GraphQL client to use for retrieving engagement list
+        engagement_uuid: UUID of the engagement to generate payload for
+
+    Returns:
+        async generator over `PayloadType
+    """
     query = gql(
         """
         query EngagementUUID($uuids: [UUID!]) {

@@ -31,8 +31,8 @@ from ramqp.mo.models import ObjectType
 from ramqp.mo.models import PayloadType
 from ramqp.mo.models import RequestType
 from ramqp.mo.models import ServiceType
-from starlette.status import HTTP_202_ACCEPTED
 from starlette.status import HTTP_200_OK
+from starlette.status import HTTP_202_ACCEPTED
 
 from engagement_updater.config import get_settings
 from engagement_updater.config import Settings
@@ -117,7 +117,7 @@ async def test_gather_with_concurrency() -> None:
             asyncio.sleep(0.1),
             asyncio.sleep(0.1),
             asyncio.sleep(0.1),
-        ]
+        ],
     )
     end = monotonic()
     duration = end - start
@@ -130,7 +130,7 @@ async def test_gather_with_concurrency() -> None:
             asyncio.sleep(0.1),
             asyncio.sleep(0.1),
             asyncio.sleep(0.1),
-        ]
+        ],
     )
     end = monotonic()
     duration = end - start

@@ -253,7 +253,8 @@ async def test_get_association_type_uuid_finds_uuid() -> None:
         "classes": [{"uuid": str(expected_association_type_uuid)}]
     }
     actual_association_type_uuid: uuid.UUID = await _get_association_type_uuid(
-        ASSOCIATION_TYPE_USER_KEY, gql_client,
+        ASSOCIATION_TYPE_USER_KEY,
+        gql_client,
     )
     assert actual_association_type_uuid == expected_association_type_uuid
 
@@ -272,11 +273,11 @@ def _get_mock_gql_client_for_engagement_query(
     employee_uuid: uuid.UUID,
     engagement_uuid: uuid.UUID,
 ) -> AsyncMock:
-    employee_uuid: list[dict] = [{"employee_uuid": str(employee_uuid)}]
+    employee_uuids: list[dict] = [{"employee_uuid": str(employee_uuid)}]
     engagements: list[dict] = [
         {
             "uuid": str(engagement_uuid),
-            "objects": employee_uuid,
+            "objects": employee_uuids,
         }
     ]
     gql_client = AsyncMock()

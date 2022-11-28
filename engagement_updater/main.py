@@ -10,6 +10,7 @@ from typing import Any
 from typing import AsyncGenerator
 from typing import Awaitable
 from typing import Callable
+from typing import Coroutine
 from typing import Tuple
 from typing import TypeVar
 from uuid import UUID
@@ -327,11 +328,12 @@ def create_app(  # pylint: disable=too-many-statements
 
     return app
 
+
 def _get_curried_handle_engagement_update(
-    context: dict
+    context: dict,
 ) -> Callable[
     [PersistentGraphQLClient, ModelClient, Settings, MORoutingKey],
-    Callable[[PayloadType], ResultType]
+    Coroutine[Any, Any, ResultType],
 ]:
     gql_client: PersistentGraphQLClient = context["gql_client"]
     model_client: ModelClient = context["model_client"]
