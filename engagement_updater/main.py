@@ -270,7 +270,7 @@ def create_app(  # pylint: disable=too-many-statements
         # Create tasks for `handle(payload)` (which is equivalent to
         # `handle_engagement_update(..., payload)`.)
         async for payload in get_bulk_update_payloads(gql_client):
-            background_tasks.add_task(handle, payload)
+            background_tasks.add_task(handle, payload)  # type: ignore
         return {"status": "Background job triggered"}
 
     @app.post("/trigger/{uuid}")
