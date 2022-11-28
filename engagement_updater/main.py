@@ -280,10 +280,10 @@ def create_app(  # pylint: disable=too-many-statements
         """Call `handle_engagement_update` on specific engagement"""
         gql_client: PersistentGraphQLClient = context["gql_client"]
         handle = _get_curried_handle_engagement_update(context)
-        # Create tasks for `handle(payload)` (which is equivalent to
-        # `handle_engagement_update(..., payload)`.)
-        async for payload in get_single_update_payload(gql_client):
-            handle(payload)
+        # Iterate over the expected single payload, and call the curried version of
+        # `handle_engagement_update` for that single payload.
+        async for payload in get_single_update_payload(gql_client, uuid):
+            await handle(payload)  # type: ignore
         return {"status": "OK"}
 
     @app.get("/health/live", status_code=HTTP_204_NO_CONTENT)
