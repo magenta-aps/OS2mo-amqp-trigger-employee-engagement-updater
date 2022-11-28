@@ -286,7 +286,10 @@ async def test_trigger_uuid_endpoint(
     # Assert
     assert response.status_code == HTTP_200_OK
     assert response.json() == {"status": "OK"}
-    get_single_update_payload.assert_called_once_with(gql_client)
+    get_single_update_payload.assert_called_once_with(
+        gql_client,
+        engagement_uuid,
+    )
     handle_engagement_update.assert_called_once_with(
         gql_client,
         model_client,
