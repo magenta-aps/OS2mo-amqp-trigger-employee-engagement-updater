@@ -1,19 +1,19 @@
-# SPDX-FileCopyrightText: 2019-2020 Magenta ApS
-#
+# SPDX-FileCopyrightText: 2022 Magenta ApS
 # SPDX-License-Identifier: MPL-2.0
 # pylint: disable=redefined-outer-name
 # pylint: disable=too-many-arguments
-"""Test the fetch_org_unit function."""
+"Test `engagement_updater.main`"
 import asyncio
 from datetime import datetime
-from functools import partial
 from time import monotonic
 from typing import Any
+from typing import AsyncGenerator
 from typing import Callable
 from typing import cast
 from typing import Generator
 from typing import Set
 from typing import Tuple
+from unittest.mock import ANY
 from unittest.mock import AsyncMock
 from unittest.mock import call
 from unittest.mock import MagicMock
@@ -25,20 +25,23 @@ import pytest
 from asgi_lifespan import LifespanManager
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from ramqp.mo import MOAMQPSystem
+from ramqp.mo import MORouter
 from ramqp.mo.models import ObjectType
 from ramqp.mo.models import PayloadType
 from ramqp.mo.models import RequestType
 from ramqp.mo.models import ServiceType
+from starlette.status import HTTP_200_OK
+from starlette.status import HTTP_202_ACCEPTED
 
-from orggatekeeper.config import get_settings
-from orggatekeeper.main import build_information
-from orggatekeeper.main import construct_clients
-from orggatekeeper.main import create_app
-from orggatekeeper.main import gather_with_concurrency
-from orggatekeeper.main import organisation_gatekeeper_callback
-from orggatekeeper.main import update_build_information
-from orggatekeeper.main import update_counter
-from tests import ORG_UUID
+from engagement_updater.config import get_settings
+from engagement_updater.config import Settings
+from engagement_updater.main import build_information
+from engagement_updater.main import construct_clients
+from engagement_updater.main import create_app
+from engagement_updater.main import gather_with_concurrency
+from engagement_updater.main import update_build_information
+from tests import ASSOCIATION_TYPE_USER_KEY
 
 
 def get_metric_value(metric: Any, labels: Tuple[str]) -> float:
@@ -82,47 +85,6 @@ def get_metric_labels(metric: Any) -> Set[Tuple[str]]:
     return set(metric._metrics.keys())
 
 
-@patch("orggatekeeper.main.update_line_management")
-async def test_update_metric(update_line_management: MagicMock) -> None:
-    """Test that our update_counter metric is updated as expected."""
-    payload = PayloadType(uuid=uuid4(), object_uuid=uuid4(), time=datetime.now())
-    seeded_update_line_management = partial(
-        update_line_management, MagicMock(), MagicMock, MagicMock()
-    )
-    callback_caller = partial(
-        organisation_gatekeeper_callback, seeded_update_line_management, MagicMock()
-    )
-
-    clear_metric_value(update_counter)
-    assert get_metric_labels(update_counter) == set()
-
-    # Returning false, counts up false once
-    update_line_management.return_value = False
-    await callback_caller(payload)
-    assert get_metric_labels(update_counter) == {("False",)}
-    assert get_metric_value(update_counter, ("False",)) == 1.0
-
-    # Returning false, counts up false once
-    update_line_management.return_value = False
-    await callback_caller(payload)
-    assert get_metric_labels(update_counter) == {("False",)}
-    assert get_metric_value(update_counter, ("False",)) == 2.0
-
-    # Returning true, counts up true once
-    update_line_management.return_value = True
-    await callback_caller(payload)
-    assert get_metric_labels(update_counter) == {("False",), ("True",)}
-    assert get_metric_value(update_counter, ("False",)) == 2.0
-    assert get_metric_value(update_counter, ("True",)) == 1.0
-
-    # Returning true, counts up true once
-    update_line_management.return_value = True
-    await callback_caller(payload)
-    assert get_metric_labels(update_counter) == {("False",), ("True",)}
-    assert get_metric_value(update_counter, ("False",)) == 2.0
-    assert get_metric_value(update_counter, ("True",)) == 2.0
-
-
 def test_build_information() -> None:
     """Test that build metrics are updated as expected."""
     clear_metric_value(build_information)
@@ -155,7 +117,7 @@ async def test_gather_with_concurrency() -> None:
             asyncio.sleep(0.1),
             asyncio.sleep(0.1),
             asyncio.sleep(0.1),
-        ]
+        ],
     )
     end = monotonic()
     duration = end - start
@@ -168,7 +130,7 @@ async def test_gather_with_concurrency() -> None:
             asyncio.sleep(0.1),
             asyncio.sleep(0.1),
             asyncio.sleep(0.1),
-        ]
+        ],
     )
     end = monotonic()
     duration = end - start
@@ -183,6 +145,7 @@ def fastapi_app_builder() -> Generator[Callable[..., FastAPI], None, None]:
         if default_args:
             kwargs["client_secret"] = "hunter2"
             kwargs["expose_metrics"] = False
+            kwargs["association_type"] = ASSOCIATION_TYPE_USER_KEY
         return create_app(*args, **kwargs)
 
     yield builder
@@ -220,69 +183,127 @@ async def test_root_endpoint(test_client: TestClient) -> None:
     """Test the root endpoint on our app."""
     response = test_client.get("/")
     assert response.status_code == 200
-    assert response.json() == {"name": "orggatekeeper"}
+    assert response.json() == {"name": "engagement_updater"}
 
 
 async def test_metrics_endpoint(test_client_builder: Callable[..., TestClient]) -> None:
     """Test the metrics endpoint on our app."""
-    test_client = test_client_builder(default_args=False, client_secret="hunter2")
+    test_client = test_client_builder(
+        default_args=False,
+        client_secret="hunter2",
+        association_type=ASSOCIATION_TYPE_USER_KEY,
+    )
     response = test_client.get("/metrics")
     assert response.status_code == 200
-    assert "# TYPE orggatekeeper_changes_created gauge" in response.text
-    assert "# TYPE build_information_info gauge" in response.text
 
 
-@patch("orggatekeeper.main.construct_context")
+@patch("engagement_updater.main.handle_engagement_update")
 async def test_trigger_all_endpoint(
-    construct_context: MagicMock,
+    handle_engagement_update: MagicMock,
     test_client_builder: Callable[..., TestClient],
 ) -> None:
     """Test the trigger all endpoint on our app."""
+    # Arrange: mock `get_bulk_update_payloads` return value
+    async def _async_generator(item: Any) -> AsyncGenerator:
+        yield item
+
+    # Arrange: context
     gql_client = AsyncMock()
-    gql_client.execute.return_value = {
-        "org_units": [{"uuid": "30206243-d930-4a69-bcfa-62e3292837d3"}]
-    }
-    seeded_update_line_management = AsyncMock()
-    construct_context.return_value = {
+    model_client = AsyncMock()
+    settings = MagicMock(spec=Settings)
+    context = {
         "gql_client": gql_client,
-        "seeded_update_line_management": seeded_update_line_management,
+        "model_client": model_client,
+        "settings": settings,
     }
-    test_client = test_client_builder()
-    response = test_client.post("/trigger/all")
-    assert response.status_code == 202
+
+    # Arrange: mock payload returned by `get_bulk_update_payloads`
+    payload = PayloadType(
+        uuid=uuid4(),
+        object_uuid=uuid4(),
+        time=datetime.now(),
+    )
+
+    # Act
+    with patch("engagement_updater.main.construct_context", return_value=context):
+        test_client = test_client_builder()
+        with patch(
+            "engagement_updater.main.get_bulk_update_payloads",
+            return_value=_async_generator(payload),
+        ) as get_bulk_update_payloads:
+            response = test_client.post("/trigger/all")
+
+    # Assert
+    assert response.status_code == HTTP_202_ACCEPTED
     assert response.json() == {"status": "Background job triggered"}
-    assert len(gql_client.execute.mock_calls) == 1
-    assert seeded_update_line_management.mock_calls == [
-        call(UUID("30206243-d930-4a69-bcfa-62e3292837d3"))
-    ]
+    get_bulk_update_payloads.assert_called_once_with(gql_client)
+    handle_engagement_update.assert_called_once_with(
+        gql_client,
+        model_client,
+        ANY,
+        ANY,
+        payload,
+    )
 
 
-@patch("orggatekeeper.main.construct_context")
+@patch("engagement_updater.main.handle_engagement_update")
 async def test_trigger_uuid_endpoint(
-    construct_context: MagicMock,
+    handle_engagement_update: MagicMock,
     test_client_builder: Callable[..., TestClient],
 ) -> None:
     """Test the trigger uuid endpoint on our app."""
-    seeded_update_line_management = AsyncMock()
-    construct_context.return_value = {
-        "seeded_update_line_management": seeded_update_line_management
+    # Arrange: mock `get_single_update_payload` return value
+    async def _async_generator(item: Any) -> AsyncGenerator:
+        yield item
+
+    # Arrange: context
+    gql_client = AsyncMock()
+    model_client = AsyncMock()
+    settings = MagicMock(spec=Settings)
+    context = {
+        "gql_client": gql_client,
+        "model_client": model_client,
+        "settings": settings,
     }
-    test_client = test_client_builder()
-    response = test_client.post("/trigger/0a9d7211-16a1-47e1-82da-7ec8480e7487")
-    assert response.status_code == 200
+
+    # Arrange: mock payload returned by `get_single_update_payload`
+    engagement_uuid: UUID = uuid4()
+    payload = PayloadType(
+        uuid=uuid4(),  # employee UUID
+        object_uuid=engagement_uuid,
+        time=datetime.now(),
+    )
+
+    # Act
+    with patch("engagement_updater.main.construct_context", return_value=context):
+        test_client = test_client_builder()
+        with patch(
+            "engagement_updater.main.get_single_update_payload",
+            return_value=_async_generator(payload),
+        ) as get_single_update_payload:
+            response = test_client.post(f"/trigger/{str(engagement_uuid)}")
+
+    # Assert
+    assert response.status_code == HTTP_200_OK
     assert response.json() == {"status": "OK"}
-    assert seeded_update_line_management.mock_calls == [
-        call(UUID("0a9d7211-16a1-47e1-82da-7ec8480e7487"))
-    ]
+    get_single_update_payload.assert_called_once_with(
+        gql_client,
+        engagement_uuid,
+    )
+    handle_engagement_update.assert_called_once_with(
+        gql_client,
+        model_client,
+        ANY,
+        ANY,
+        payload,
+    )
 
 
-@patch("orggatekeeper.main.fetch_org_uuid")
-@patch("orggatekeeper.main.MOAMQPSystem")
-@patch("orggatekeeper.main.MORouter")
+@patch("engagement_updater.main.MOAMQPSystem")
+@patch("engagement_updater.main.MORouter")
 async def test_lifespan(
-    mo_router: MagicMock,
-    mo_amqpsystem: MagicMock,
-    mock_fetch_org_uuid: MagicMock,
+    mo_router: MORouter,
+    mo_amqpsystem: MOAMQPSystem,
     fastapi_app: FastAPI,
 ) -> None:
     """Test that our lifespan events are handled as expected."""
@@ -290,34 +311,22 @@ async def test_lifespan(
     amqp_system.start = AsyncMock()
     amqp_system.stop = AsyncMock()
 
-    mo_amqpsystem.return_value = amqp_system
-    mock_fetch_org_uuid.return_value = ORG_UUID
+    mo_amqpsystem.return_value = amqp_system  # type: ignore
 
     router = MagicMock()
-    mo_router.return_value = router
+    mo_router.return_value = router  # type: ignore
 
     assert not amqp_system.mock_calls
 
     # Fire startup event on entry, and shutdown on exit
     async with LifespanManager(fastapi_app):
-
-        assert len(router.mock_calls) == 8
+        assert len(router.mock_calls) == 2
         # Create register calls
         assert router.mock_calls[0] == call.register(
-            ServiceType.ORG_UNIT, ObjectType.ASSOCIATION, RequestType.WILDCARD
-        )
-        assert router.mock_calls[2] == call.register(
-            ServiceType.ORG_UNIT, ObjectType.ENGAGEMENT, RequestType.WILDCARD
-        )
-        assert router.mock_calls[4] == call.register(
-            ServiceType.ORG_UNIT, ObjectType.ORG_UNIT, RequestType.WILDCARD
-        )
-        assert router.mock_calls[6] == call.register(
-            ServiceType.ORG_UNIT, ObjectType.IT, RequestType.WILDCARD
+            ServiceType.EMPLOYEE, ObjectType.ENGAGEMENT, RequestType.WILDCARD
         )
         # Register calls
-        assert router.mock_calls[1] == router.mock_calls[3]
-        assert router.mock_calls[1] == router.mock_calls[5]
+        assert router.mock_calls[1]
 
         # Clean mock to only capture shutdown changes
         amqp_system.reset_mock()
@@ -342,7 +351,7 @@ async def test_liveness_endpoint(test_client: TestClient) -> None:
         (False, False, False, 503),
     ],
 )
-@patch("orggatekeeper.main.construct_context")
+@patch("engagement_updater.main.construct_context")
 async def test_readiness_endpoint(
     construct_context: MagicMock,
     test_client_builder: Callable[..., TestClient],
@@ -403,7 +412,7 @@ async def test_readiness_endpoint(
         (False, False, False, 503),
     ],
 )
-@patch("orggatekeeper.main.construct_context")
+@patch("engagement_updater.main.construct_context")
 async def test_readiness_endpoint_exception(
     construct_context: MagicMock,
     test_client_builder: Callable[..., TestClient],
@@ -448,12 +457,16 @@ async def test_readiness_endpoint_exception(
     assert response.status_code == expected
 
 
-@patch("orggatekeeper.main.PersistentGraphQLClient")
+@patch("engagement_updater.main.PersistentGraphQLClient")
 def test_gql_client_created_with_timeout(mock_gql_client: MagicMock) -> None:
     """Test that PersistentGraphQLClient is called with timeout setting"""
 
     # Arrange
-    settings = get_settings(client_secret="not used", graphql_timeout=15)
+    settings = get_settings(
+        client_secret="not used",
+        association_type=ASSOCIATION_TYPE_USER_KEY,
+        graphql_timeout=15,
+    )
 
     # Act
     construct_clients(settings)

@@ -1,5 +1,4 @@
 # SPDX-FileCopyrightText: Magenta ApS
-#
 # SPDX-License-Identifier: MPL-2.0
 
 FROM python:3.10
@@ -23,7 +22,7 @@ COPY poetry.lock pyproject.toml ./
 RUN poetry install --no-root --only=main
 
 WORKDIR /opt/app
-COPY orggatekeeper .
+COPY engagement_updater .
 WORKDIR /opt/
 CMD [ "uvicorn", "--factory", "app.main:create_app", "--host", "0.0.0.0" ]
 
