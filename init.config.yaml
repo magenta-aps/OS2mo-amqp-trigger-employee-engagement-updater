@@ -1,0 +1,5 @@
+facets:
+  association_type:
+    automatisk_oprettet:
+      title: "Automatisk oprettet"
+      scope: "TEXT"
